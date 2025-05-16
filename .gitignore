@@ -6,3 +6,17 @@ build/
 .cache/
 .vscode/
 */cmake-build-*/
+
+cmake-build-*
+.idea
+.DS_Store
+build
+dist
+*.egg-info
+*.pyc
+CMakeFiles/
+third-party/
+
+# Third-party links created by `setup.py develop`
+deep_gemm/include/cute
+deep_gemm/include/cutlass

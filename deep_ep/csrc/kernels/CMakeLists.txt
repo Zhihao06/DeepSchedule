@@ -7,6 +7,7 @@ function(add_deep_ep_library target_name source_file)
             CXX_STANDARD 14
             CUDA_STANDARD 14
             CUDA_SEPARABLE_COMPILATION ON
+            CUDA_ARCHITECTURES 90
     )
     target_link_libraries(${target_name} PUBLIC nvshmem cudart cudadevrt mlx5)
 endfunction()
