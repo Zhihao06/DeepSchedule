@@ -12,8 +12,9 @@ list(APPEND CUDA_NVCC_FLAGS "--ptxas-options=--verbose,--register-usage-level=10
 
 set(TORCH_CUDA_ARCH_LIST "9.0")
 find_package(CUDAToolkit REQUIRED)
-# find_package(pybind11 REQUIRED)
-# find_package(Torch REQUIRED)
+find_package(pybind11 REQUIRED)
+set(Torch_DIR "/usr/local/lib/python3.10/dist-packages/torch/share/cmake/Torch")
+find_package(Torch REQUIRED)
 find_package(NVSHMEM REQUIRED HINTS ${NVSHMEM_ROOT_DIR}/lib/cmake/nvshmem)
 
 add_library(nvshmem ALIAS nvshmem::nvshmem)
@@ -24,11 +25,16 @@ add_library(nvshmem_device ALIAS nvshmem::nvshmem_device)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 14)
 
-include_directories(${CUDA_TOOLKIT_ROOT_DIR}/include ${NVSHMEM_INCLUDE_DIR}) # ${TORCH_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS}
-link_directories(${CUDA_TOOLKIT_ROOT_DIR}/lib ${NVSHMEM_LIB_DIR}) # ${TORCH_INSTALL_PREFIX}/lib
+include_directories(${CUDA_TOOLKIT_ROOT_DIR}/include ${NVSHMEM_INCLUDE_DIR} ${TORCH_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})
+link_directories(${CUDA_TOOLKIT_ROOT_DIR}/lib ${NVSHMEM_LIB_DIR} ${TORCH_INSTALL_PREFIX}/lib)
 
 add_subdirectory(kernels)
 
+set(SOURCES deep_ep.cpp)
+add_library(deep_ep SHARED ${SOURCES})
+set_property(TARGET deep_ep PROPERTY CUDA_ARCHITECTURES 90)
+target_link_libraries(deep_ep PRIVATE CUDA::cudart ${EP_CUDA_LIBRARIES} ${TORCH_LIBRARIES} torch_python)
+
 # Link CPP and CUDA together
 # pybind11_add_module(deep_ep_cpp deep_ep.cpp)
-target_link_libraries(deep_ep_cpp PRIVATE ${EP_CUDA_LIBRARIES}) # ${TORCH_LIBRARIES} torch_python
+# target_link_libraries(deep_ep_cpp PRIVATE ${EP_CUDA_LIBRARIES}) # ${TORCH_LIBRARIES} torch_python
