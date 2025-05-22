@@ -22,7 +22,7 @@
 
 namespace deep_ep {
 
-struct Buffer {
+struct __attribute__((visibility("default"))) Buffer {
     EP_STATIC_ASSERT(NUM_MAX_NVL_PEERS == 8, "The number of maximum NVLink peers must be 8");
 
 private:

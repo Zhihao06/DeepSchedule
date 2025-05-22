@@ -1200,40 +1200,40 @@ Buffer::get_next_low_latency_combine_buffer(int num_max_dispatch_tokens_per_rank
 
 } // namespace deep_ep
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.doc() = "DeepEP: an efficient expert-parallel communication library";
+// PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+//     m.doc() = "DeepEP: an efficient expert-parallel communication library";
 
-    pybind11::class_<deep_ep::Config>(m, "Config")
-        .def(pybind11::init<int, int, int, int, int>(),
-             py::arg("num_sms") = 20,
-             py::arg("num_max_nvl_chunked_send_tokens") = 6, py::arg("num_max_nvl_chunked_recv_tokens") = 256,
-             py::arg("num_max_rdma_chunked_send_tokens") = 6, py::arg("num_max_rdma_chunked_recv_tokens") = 256)
-        .def("get_nvl_buffer_size_hint", &deep_ep::Config::get_nvl_buffer_size_hint)
-        .def("get_rdma_buffer_size_hint", &deep_ep::Config::get_rdma_buffer_size_hint);
-    m.def("get_low_latency_rdma_size_hint", &deep_ep::get_low_latency_rdma_size_hint);
+//     pybind11::class_<deep_ep::Config>(m, "Config")
+//         .def(pybind11::init<int, int, int, int, int>(),
+//              py::arg("num_sms") = 20,
+//              py::arg("num_max_nvl_chunked_send_tokens") = 6, py::arg("num_max_nvl_chunked_recv_tokens") = 256,
+//              py::arg("num_max_rdma_chunked_send_tokens") = 6, py::arg("num_max_rdma_chunked_recv_tokens") = 256)
+//         .def("get_nvl_buffer_size_hint", &deep_ep::Config::get_nvl_buffer_size_hint)
+//         .def("get_rdma_buffer_size_hint", &deep_ep::Config::get_rdma_buffer_size_hint);
+//     m.def("get_low_latency_rdma_size_hint", &deep_ep::get_low_latency_rdma_size_hint);
 
-    pybind11::class_<deep_ep::EventHandle>(m, "EventHandle")
-        .def(pybind11::init<>())
-        .def("current_stream_wait", &deep_ep::EventHandle::current_stream_wait);
+//     pybind11::class_<deep_ep::EventHandle>(m, "EventHandle")
+//         .def(pybind11::init<>())
+//         .def("current_stream_wait", &deep_ep::EventHandle::current_stream_wait);
 
-    pybind11::class_<deep_ep::Buffer>(m, "Buffer")
-        .def(pybind11::init<int, int, int64_t, int64_t, bool>())
-        .def("is_available", &deep_ep::Buffer::is_available)
-        .def("get_num_rdma_ranks", &deep_ep::Buffer::get_num_rdma_ranks)
-        .def("get_rdma_rank", &deep_ep::Buffer::get_rdma_rank)
-        .def("get_root_rdma_rank", &deep_ep::Buffer::get_root_rdma_rank)
-        .def("get_local_device_id", &deep_ep::Buffer::get_local_device_id)
-        .def("get_local_ipc_handle", &deep_ep::Buffer::get_local_ipc_handle)
-        .def("get_local_nvshmem_unique_id", &deep_ep::Buffer::get_local_nvshmem_unique_id)
-        .def("get_local_buffer_tensor", &deep_ep::Buffer::get_local_buffer_tensor)
-        .def("sync", &deep_ep::Buffer::sync)
-        .def("get_dispatch_layout", &deep_ep::Buffer::get_dispatch_layout)
-        .def("intranode_dispatch", &deep_ep::Buffer::intranode_dispatch)
-        .def("intranode_combine", &deep_ep::Buffer::intranode_combine)
-        .def("internode_dispatch", &deep_ep::Buffer::internode_dispatch)
-        .def("internode_combine", &deep_ep::Buffer::internode_combine)
-        .def("clean_low_latency_buffer", &deep_ep::Buffer::clean_low_latency_buffer)
-        .def("low_latency_dispatch", &deep_ep::Buffer::low_latency_dispatch)
-        .def("low_latency_combine", &deep_ep::Buffer::low_latency_combine)
-        .def("get_next_low_latency_combine_buffer", &deep_ep::Buffer::get_next_low_latency_combine_buffer);
-}
+//     pybind11::class_<deep_ep::Buffer>(m, "Buffer")
+//         .def(pybind11::init<int, int, int64_t, int64_t, bool>())
+//         .def("is_available", &deep_ep::Buffer::is_available)
+//         .def("get_num_rdma_ranks", &deep_ep::Buffer::get_num_rdma_ranks)
+//         .def("get_rdma_rank", &deep_ep::Buffer::get_rdma_rank)
+//         .def("get_root_rdma_rank", &deep_ep::Buffer::get_root_rdma_rank)
+//         .def("get_local_device_id", &deep_ep::Buffer::get_local_device_id)
+//         .def("get_local_ipc_handle", &deep_ep::Buffer::get_local_ipc_handle)
+//         .def("get_local_nvshmem_unique_id", &deep_ep::Buffer::get_local_nvshmem_unique_id)
+//         .def("get_local_buffer_tensor", &deep_ep::Buffer::get_local_buffer_tensor)
+//         .def("sync", &deep_ep::Buffer::sync)
+//         .def("get_dispatch_layout", &deep_ep::Buffer::get_dispatch_layout)
+//         .def("intranode_dispatch", &deep_ep::Buffer::intranode_dispatch)
+//         .def("intranode_combine", &deep_ep::Buffer::intranode_combine)
+//         .def("internode_dispatch", &deep_ep::Buffer::internode_dispatch)
+//         .def("internode_combine", &deep_ep::Buffer::internode_combine)
+//         .def("clean_low_latency_buffer", &deep_ep::Buffer::clean_low_latency_buffer)
+//         .def("low_latency_dispatch", &deep_ep::Buffer::low_latency_dispatch)
+//         .def("low_latency_combine", &deep_ep::Buffer::low_latency_combine)
+//         .def("get_next_low_latency_combine_buffer", &deep_ep::Buffer::get_next_low_latency_combine_buffer);
+// }
