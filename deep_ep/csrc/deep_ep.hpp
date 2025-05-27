@@ -146,13 +146,13 @@ public:
 
     std::tuple<torch::Tensor, std::optional<torch::Tensor>, torch::Tensor, torch::Tensor, torch::Tensor, std::optional<EventHandle>, std::optional<std::function<void()>>>
     low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_idx,
-                         int num_max_dispatch_tokens_per_rank, int num_experts,
+                         int num_max_dispatch_tokens_per_rank, int num_experts, int num_sms,
                          bool use_fp8, bool async, bool return_recv_hook);
 
     std::tuple<torch::Tensor, std::optional<EventHandle>, std::optional<std::function<void()>>>
     low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_idx, const torch::Tensor& topk_weights,
                         const torch::Tensor& src_info, const torch::Tensor& layout_range,
-                        int num_max_dispatch_tokens_per_rank, int num_experts,
+                        int num_max_dispatch_tokens_per_rank, int num_experts, int num_sms,
                         bool zero_copy, bool async, bool return_recv_hook,
                         const std::optional<torch::Tensor>& out = std::nullopt);
 

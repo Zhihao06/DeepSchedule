@@ -5,8 +5,8 @@
 
 using namespace deep_gemm;
 
-void launch_gemm(void* __raw_lhs, void* __raw_lhs_scales, void* __raw_rhs, void* __raw_rhs_scales, void* __raw_out, void* __raw_grouped_layout, int m, void* __raw_stream) {
-    int num_sms = 78;
+void launch_gemm(void* __raw_lhs, void* __raw_lhs_scales, void* __raw_rhs, void* __raw_rhs_scales, void* __raw_out, void* __raw_grouped_layout, int m, void* __raw_stream, int num_sms) {
+    // int num_sms = 78;
     int smem_size = 206800;
     // Cast raw types (if needed)
     auto lhs = reinterpret_cast<__nv_fp8_e4m3*>(__raw_lhs);

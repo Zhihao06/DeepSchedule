@@ -36,6 +36,15 @@ void clean_low_latency_buffer(int* clean_0, int num_clean_int_0,
                   clean_0, num_clean_int_0, clean_1, num_clean_int_1);
 }
 
+const int get_kNumWarpGroups(int num_experts, const int num_sms) {
+    return (num_experts + num_sms - 1) / num_sms;
+}
+
+const int get_kNumWarpsPerGroup(int warp_groups) {
+    constexpr int num_warps = 32;
+    return num_warps / warp_groups;
+}
+
 template <bool kUseFP8, int kNumWarpGroups, int kNumWarpsPerGroup, int kHidden>
 __global__ __launch_bounds__(kNumWarpGroups * kNumWarpsPerGroup * 32, 1) void
 dispatch(void* packed_recv_x, float* packed_recv_x_scales,
@@ -307,15 +316,15 @@ void dispatch(void* packed_recv_x, float* packed_recv_x_scales,
               const void* x, const int64_t* topk_idx,
               int* next_clean, int num_next_clean_int,
               int num_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
-              int num_topk, int num_experts, int rank, int num_ranks, bool use_fp8,
+              int num_topk, int num_experts, int rank, int num_ranks, int num_sms, bool use_fp8,
               void* workspace, cudaStream_t stream, int phases) {
-    constexpr int kNumMaxTopK = 9;
-    constexpr int kNumWarpsPerGroup = 10;
-    constexpr int kNumWarpGroups = 3;
-    EP_STATIC_ASSERT(kNumMaxTopK + 1 <= kNumWarpGroups * kNumWarpsPerGroup, "Too many top-k selections");
+    const int kNumMaxTopK = 9;
+    const int kNumWarpGroups = get_kNumWarpGroups(num_experts, num_sms);
+    const int kNumWarpsPerGroup = get_kNumWarpsPerGroup(kNumWarpGroups);
+    EP_HOST_ASSERT(kNumMaxTopK + 1 <= kNumWarpGroups * kNumWarpsPerGroup); // "Too many top-k selections"
 
     const auto num_warps = kNumWarpGroups * kNumWarpsPerGroup;
-    const auto num_sms = cell_div(num_experts, kNumWarpGroups);
+    // const auto num_sms = cell_div(num_experts, kNumWarpGroups);
     EP_HOST_ASSERT(num_topk <= kNumMaxTopK);
 
     // Workspace checks
@@ -323,7 +332,7 @@ void dispatch(void* packed_recv_x, float* packed_recv_x_scales,
     auto atomic_finish_counter_per_expert = atomic_counter_per_expert + num_experts;
     EP_HOST_ASSERT(num_experts * sizeof(int) * 2 <= NUM_WORKSPACE_BYTES);
 
-#define DISPATCH_LAUNCH_CASE(hidden) { \
+#define DISPATCH_LAUNCH_CASE(hidden, num_experts, kNumWarpGroups, kNumWarpsPerGroup) { \
 auto dispatch_func = use_fp8 ? dispatch<true, kNumWarpGroups, kNumWarpsPerGroup, hidden> : \
                                dispatch<false, kNumWarpGroups, kNumWarpsPerGroup, hidden>; \
 LAUNCH_KERNEL(&cfg, dispatch_func, \
@@ -338,8 +347,12 @@ LAUNCH_KERNEL(&cfg, dispatch_func, \
               num_topk, num_experts, rank, num_ranks, phases); } break
 
     SETUP_LAUNCH_CONFIG(num_sms, num_warps * 32, stream);
-    SWITCH_HIDDEN(DISPATCH_LAUNCH_CASE);
+    #define SMS_CASE_MACRO(hidden_const, num_sms_const) SWITCH_EXPERTS(hidden_const, num_sms_const, DISPATCH_LAUNCH_CASE)
+    #define HIDDEN_CASE_MACRO(hidden_const) SWITCH_SMS(hidden_const, SMS_CASE_MACRO)
+    SWITCH_HIDDEN(HIDDEN_CASE_MACRO);
 #undef DISPATCH_LAUNCH_CASE
+#undef HIDDEN_CASE_MACRO
+#undef SMS_CASE_MACRO
 }
 
 template <int kNumWarpGroups, int kNumWarpsPerGroup, int kHidden, int kNumMaxTopk>
@@ -499,22 +512,22 @@ void combine(void* combined_x,
              const int* src_info, const int64_t* layout_range,
              int* next_clean, int num_next_clean_int,
              int num_combined_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
-             int num_topk, int num_experts, int rank, int num_ranks,
+             int num_topk, int num_experts, int rank, int num_ranks, int num_sms,
              void* workspace, cudaStream_t stream,
              int phases, bool zero_copy) {
-    constexpr int kNumWarpsPerGroup = 10;
-    constexpr int kNumWarpGroups = 3;
-    constexpr int kNumMaxTopk = 9;
+    const int kNumMaxTopk = 9;
+    const int kNumWarpGroups = get_kNumWarpGroups(num_experts, num_sms);
+    const int kNumWarpsPerGroup = get_kNumWarpsPerGroup(kNumWarpGroups);
 
     const auto num_warps = kNumWarpGroups * kNumWarpsPerGroup;
-    const auto num_sms = cell_div(num_experts, kNumWarpGroups);
+    // const auto num_sms = cell_div(num_experts, kNumWarpGroups);
 
     // Check workspace
     auto atomic_clean_flag = reinterpret_cast<int*>(workspace);
     EP_HOST_ASSERT(sizeof(int) <= NUM_WORKSPACE_BYTES);
     EP_HOST_ASSERT(num_topk <= kNumMaxTopk);
 
-#define COMBINE_LAUNCH_CASE(hidden) { \
+#define COMBINE_LAUNCH_CASE(hidden, num_sms, kNumWarpGroups, kNumWarpsPerGroup) { \
 auto combine_func = combine<kNumWarpGroups, kNumWarpsPerGroup, hidden, kNumMaxTopk>; \
 LAUNCH_KERNEL(&cfg, combine_func, \
               combined_x, \
@@ -528,8 +541,12 @@ LAUNCH_KERNEL(&cfg, combine_func, \
               phases, zero_copy); } break
 
     SETUP_LAUNCH_CONFIG(num_sms, num_warps * 32, stream);
-    SWITCH_HIDDEN(COMBINE_LAUNCH_CASE);
+    #define SMS_CASE_MACRO(hidden_const, num_sms_const) SWITCH_EXPERTS(hidden_const, num_sms_const, COMBINE_LAUNCH_CASE)
+    #define HIDDEN_CASE_MACRO(hidden_const) SWITCH_SMS(hidden_const, SMS_CASE_MACRO)
+    SWITCH_HIDDEN(HIDDEN_CASE_MACRO);
 #undef COMBINE_LAUNCH_CASE
+#undef HIDDEN_CASE_MACRO
+#undef SMS_CASE_MACRO
 }
 
 } // namespace internode_ll
