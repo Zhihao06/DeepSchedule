@@ -38,7 +38,11 @@ void destroy_distributed() {
     global_pg->shutdown();
 }
 
-void get_deepep_low_latency_buffer(uint64_t num_max_dispatch_tokens_per_rank, uint64_t hidden, std::shared_ptr<ProcessGroupNCCL>& group, uint64_t num_groups, std::shared_ptr<Buffer>& buffer) {
+void get_deepep_low_latency_buffer(uint64_t num_max_dispatch_tokens_per_rank, uint64_t hidden, std::shared_ptr<ProcessGroupNCCL>& group, uint64_t num_groups, std::shared_ptr<Buffer>& buffer,
+    bool use_cuda_graph, 
+    std::optional<bool> use_fp8, std::optional<int> num_experts, 
+    std::optional<int64_t> num_tokens
+    ) {
 
     // Initialize the CPP runtime
     auto group_size = group->getSize();
@@ -49,7 +53,14 @@ void get_deepep_low_latency_buffer(uint64_t num_max_dispatch_tokens_per_rank, ui
     auto low_latency_mode = true;
     auto num_qps_per_rank = num_groups;
     auto num_rdma_bytes = get_low_latency_rdma_size_hint(num_max_dispatch_tokens_per_rank, hidden, group_size, num_groups * group_size);
-    buffer = std::make_shared<Buffer>(rank, group_size, num_nvl_bytes, num_rdma_bytes, low_latency_mode);
+    if (use_cuda_graph) {
+        FUSE_HOST_ASSERT(use_fp8.has_value());
+        FUSE_HOST_ASSERT(num_experts.has_value());
+        FUSE_HOST_ASSERT(num_tokens.has_value());
+        buffer = std::make_shared<Buffer>(rank, group_size, num_nvl_bytes, num_rdma_bytes, low_latency_mode, true/*use_cuda_graph*/, use_fp8, num_experts, static_cast<int>(num_max_dispatch_tokens_per_rank), static_cast<int>(hidden), num_tokens);
+    } else {
+        buffer = std::make_shared<Buffer>(rank, group_size, num_nvl_bytes, num_rdma_bytes, low_latency_mode, false/*use_cuda_graph*/);
+    }
     
     // Synchronize device IDs
     int local_device_id = buffer->get_local_device_id();
@@ -144,10 +155,12 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
     auto m_max = num_max_dispatch_tokens_per_rank * world_size;
 
     cudaStream_t current_stream;
-    CUDA_CHECK(cudaStreamCreate(&current_stream));
+    CUDA_CHECK(cudaStreamCreateWithFlags(&current_stream, cudaStreamNonBlocking));
     global_pg->barrier()->wait();
     std::shared_ptr<Buffer> buffer;
-    get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffer);
+    get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffer,
+        true/*use_cuda_graph*/, true/*use_fp8*/, num_experts, 
+        num_tokens);
     auto [
         hidden_states,
         topk_ids,
@@ -159,6 +172,8 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
         y_fp8_2,
         out_2
     ] = initialize_random_inputs(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
+
+    // Warm Up
     auto [
         packed_recv_x, 
         packed_recv_x_scales, 
@@ -197,4 +212,49 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
         event_,
         hook_
     ] = buffer->low_latency_combine(out_2.view(packed_recv_x.sizes()), topk_ids, topk_weights, src_info, layout_range, num_max_dispatch_tokens_per_rank, num_experts, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, std::nullopt/*out: inplace tensor*/);
+
+    for (auto i=0; i<10; i++) {
+        ep_moe_core_(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens,
+            num_topk, world_size, num_groups, expected_m, m_max, current_stream, 
+            buffer, 
+            hidden_states,
+            topk_ids,
+            topk_weights,
+            x_fp8,
+            y_fp8,
+            out,
+            x_fp8_2,
+            y_fp8_2,
+            out_2);
+    }
+    // // Prepare Cuda Graph
+    // cudaGraph_t graph;
+    // cudaGraphExec_t instance;
+    // cudaStreamBeginCapture(current_stream, cudaStreamCaptureModeGlobal);
+    // ep_moe_core_(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens,
+    //     num_topk, world_size, num_groups, expected_m, m_max, current_stream, 
+    //     buffer, 
+    //     hidden_states,
+    //     topk_ids,
+    //     topk_weights,
+    //     x_fp8,
+    //     y_fp8,
+    //     out,
+    //     x_fp8_2,
+    //     y_fp8_2,
+    //     out_2);
+    // cudaStreamEndCapture(current_stream, &graph);
+
+    // // Instantiate Graph
+    // cudaGraphInstantiate(&instance, graph, NULL, NULL, 0);
+
+    // // Execute Graph
+    // for (auto i=0; i<10; i++) {
+    //     cudaGraphLaunch(instance, current_stream);
+    //     DEBUG_FILE();
+    // }
+
+    // // Release Resource
+    // cudaGraphExecDestroy(instance);
+    // cudaGraphDestroy(graph);
 }
