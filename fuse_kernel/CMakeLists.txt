@@ -9,6 +9,25 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 set(NVSHMEM_ROOT_DIR "/home/dpsk_a2a/deepep-nvshmem/install")
 set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda")
 
+# 查找 ccache
+find_program(CCACHE_PROGRAM NAMES ccache)
+
+if(CCACHE_PROGRAM)
+    message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
+    
+    # 设置 C/CXX 编译器为 ccache 包裹的版本
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+
+    # 如果使用 nvcc 编译 CUDA 代码，也用 ccache 包装
+    if(CMAKE_CUDA_COMPILER)
+        set(CMAKE_CUDA_HOST_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+        set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    endif()
+else()
+    message(STATUS "ccache not found, compiling without ccache")
+endif()
+
 find_package(CUDAToolkit REQUIRED)
 find_package(Python REQUIRED)
 set(PYTHON_INCLUDE_DIRS "/usr/include/python3.10")

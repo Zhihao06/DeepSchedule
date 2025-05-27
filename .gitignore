@@ -22,3 +22,4 @@ deep_gemm/include/cute
 deep_gemm/include/cutlass
 
 output_log/
+*.nsys-rep

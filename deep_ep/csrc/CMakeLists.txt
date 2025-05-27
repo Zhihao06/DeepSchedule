@@ -3,6 +3,25 @@ cmake_minimum_required(VERSION 3.10)
 project(deep_ep LANGUAGES CUDA CXX)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
+# 查找 ccache
+find_program(CCACHE_PROGRAM NAMES ccache)
+
+if(CCACHE_PROGRAM)
+    message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
+    
+    # 设置 C/CXX 编译器为 ccache 包裹的版本
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+
+    # 如果使用 nvcc 编译 CUDA 代码，也用 ccache 包装
+    if(CMAKE_CUDA_COMPILER)
+        set(CMAKE_CUDA_HOST_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+        set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    endif()
+else()
+    message(STATUS "ccache not found, compiling without ccache")
+endif()
+
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -fPIC -fvisibility=default")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -fvisibility=default")
 set(CUDA_SEPARABLE_COMPILATION ON)
