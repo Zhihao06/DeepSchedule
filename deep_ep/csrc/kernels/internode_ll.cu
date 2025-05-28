@@ -332,9 +332,10 @@ void dispatch(void* packed_recv_x, float* packed_recv_x_scales,
     auto atomic_finish_counter_per_expert = atomic_counter_per_expert + num_experts;
     EP_HOST_ASSERT(num_experts * sizeof(int) * 2 <= NUM_WORKSPACE_BYTES);
 
-#define DISPATCH_LAUNCH_CASE(hidden, num_experts, kNumWarpGroups, kNumWarpsPerGroup) { \
+#define DISPATCH_LAUNCH_CASE(hidden, num_sms, num_experts, kNumWarpGroups, kNumWarpsPerGroup) { \
 auto dispatch_func = use_fp8 ? dispatch<true, kNumWarpGroups, kNumWarpsPerGroup, hidden> : \
                                dispatch<false, kNumWarpGroups, kNumWarpsPerGroup, hidden>; \
+SETUP_LAUNCH_CONFIG(num_sms, num_warps * 32, stream); \
 LAUNCH_KERNEL(&cfg, dispatch_func, \
               packed_recv_x, packed_recv_x_scales, \
               packed_recv_src_info, packed_recv_layout_range, \
@@ -346,7 +347,6 @@ LAUNCH_KERNEL(&cfg, dispatch_func, \
               num_tokens, num_max_dispatch_tokens_per_rank, \
               num_topk, num_experts, rank, num_ranks, phases); } break
 
-    SETUP_LAUNCH_CONFIG(num_sms, num_warps * 32, stream);
     #define SMS_CASE_MACRO(hidden_const, num_sms_const) SWITCH_EXPERTS(hidden_const, num_sms_const, DISPATCH_LAUNCH_CASE)
     #define HIDDEN_CASE_MACRO(hidden_const) SWITCH_SMS(hidden_const, SMS_CASE_MACRO)
     SWITCH_HIDDEN(HIDDEN_CASE_MACRO);
@@ -527,8 +527,9 @@ void combine(void* combined_x,
     EP_HOST_ASSERT(sizeof(int) <= NUM_WORKSPACE_BYTES);
     EP_HOST_ASSERT(num_topk <= kNumMaxTopk);
 
-#define COMBINE_LAUNCH_CASE(hidden, num_sms, kNumWarpGroups, kNumWarpsPerGroup) { \
+#define COMBINE_LAUNCH_CASE(hidden, num_sms, num_experts, kNumWarpGroups, kNumWarpsPerGroup) { \
 auto combine_func = combine<kNumWarpGroups, kNumWarpsPerGroup, hidden, kNumMaxTopk>; \
+SETUP_LAUNCH_CONFIG(num_sms, num_warps * 32, stream); \
 LAUNCH_KERNEL(&cfg, combine_func, \
               combined_x, \
               rdma_recv_x, rdma_recv_flag, rdma_send_x, \
@@ -540,7 +541,6 @@ LAUNCH_KERNEL(&cfg, combine_func, \
               num_experts, rank, num_ranks, \
               phases, zero_copy); } break
 
-    SETUP_LAUNCH_CONFIG(num_sms, num_warps * 32, stream);
     #define SMS_CASE_MACRO(hidden_const, num_sms_const) SWITCH_EXPERTS(hidden_const, num_sms_const, COMBINE_LAUNCH_CASE)
     #define HIDDEN_CASE_MACRO(hidden_const) SWITCH_SMS(hidden_const, SMS_CASE_MACRO)
     SWITCH_HIDDEN(HIDDEN_CASE_MACRO);

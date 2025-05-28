@@ -130,27 +130,27 @@
 #define SWITCH_EXPERTS(hidden_const, num_sms_const, case_macro) \
     do { \
         if (num_experts <= num_sms_const) { \
-            case_macro(hidden_const, num_experts, 1, 32); \
+            case_macro(hidden_const, num_sms_const, num_experts, 1, 32); \
         } else if (num_experts <= num_sms_const * 2) { \
-            case_macro(hidden_const, num_experts, 2, 16); \
+            case_macro(hidden_const, num_sms_const, num_experts, 2, 16); \
         } else if (num_experts <= num_sms_const * 3) { \
-            case_macro(hidden_const, num_experts, 3, 10); \
+            case_macro(hidden_const, num_sms_const, num_experts, 3, 10); \
         } else if (num_experts <= num_sms_const * 4) { \
-            case_macro(hidden_const, num_experts, 4, 8); \
+            case_macro(hidden_const, num_sms_const, num_experts, 4, 8); \
         } else if (num_experts <= num_sms_const * 5) { \
-            case_macro(hidden_const, num_experts, 5, 6); \
+            case_macro(hidden_const, num_sms_const, num_experts, 5, 6); \
         } else if (num_experts <= num_sms_const * 6) { \
-            case_macro(hidden_const, num_experts, 6, 5); \
+            case_macro(hidden_const, num_sms_const, num_experts, 6, 5); \
         } else if (num_experts <= num_sms_const * 7) { \
-            case_macro(hidden_const, num_experts, 7, 4); \
+            case_macro(hidden_const, num_sms_const, num_experts, 7, 4); \
         } else if (num_experts <= num_sms_const * 8) { \
-            case_macro(hidden_const, num_experts, 8, 4); \
+            case_macro(hidden_const, num_sms_const, num_experts, 8, 4); \
         } else if (num_experts <= num_sms_const * 9) { \
-            case_macro(hidden_const, num_experts, 9, 3); \
+            case_macro(hidden_const, num_sms_const, num_experts, 9, 3); \
         } else if (num_experts <= num_sms_const * 10) { \
-            case_macro(hidden_const, num_experts, 10, 3); \
+            case_macro(hidden_const, num_sms_const, num_experts, 10, 3); \
         } else if (num_experts <= num_sms_const * 16) { \
-            case_macro(hidden_const, num_experts, 16, 2); \
+            case_macro(hidden_const, num_sms_const, num_experts, 16, 2); \
         } else { \
             EP_HOST_ASSERT(false && "Unsupported expert"); \
         } \
