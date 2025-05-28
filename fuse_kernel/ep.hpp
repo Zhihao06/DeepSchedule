@@ -9,8 +9,8 @@
 
 #include "deep_ep.hpp"
 #include "config.hpp"
+#include "gemm.cuh"
 #include "tools/data.hpp"
-#include "tools/gemm.hpp"
 #include "tools/utils.hpp"
 #include "tools/debug.hpp"
 
