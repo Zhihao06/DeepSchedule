@@ -1,3 +1,4 @@
+#define LAUNCH_GEMM(n, k) launch_gemm_m4_n##n##_k##k##_group16_sm78
 
 struct FUSEConfig {
     int gemm_sms;
