@@ -23,3 +23,6 @@ deep_gemm/include/cutlass
 
 output_log/
 *.nsys-rep
+*.sqlite
+*.dict
+*.csv

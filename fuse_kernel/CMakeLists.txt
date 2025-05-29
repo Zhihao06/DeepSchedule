@@ -68,7 +68,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC")
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3 -fPIC -DNDEBUG")
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -O3 -std=c++17 -DNDEBUG --ptxas-options=--register-usage-level=10")
 
-add_executable(fuse_app fuse.cu)
+add_executable(fuse_app fuse.cpp)
 target_include_directories(fuse_app PUBLIC ../deep_gemm/include)
 target_include_directories(fuse_app PUBLIC ../deep_ep/csrc)
 target_include_directories(fuse_app PUBLIC ${CUDA_TOOLKIT_ROOT_DIR}/include ${NVSHMEM_INCLUDE_DIR} ${TORCH_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})

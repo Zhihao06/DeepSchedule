@@ -5,6 +5,23 @@
 #include <algorithm>
 #include "debug.hpp"
 
+// cuda events
+#define CUDA_EVENT_START(name) \
+    cudaEvent_t start_##name, stop_##name; \
+    cudaEventCreate(&start_##name); \
+    cudaEventCreate(&stop_##name); \
+    cudaEventRecord(start_##name);
+
+#define CUDA_EVENT_STOP(name) \
+    cudaEventRecord(stop_##name); \
+    cudaEventSynchronize(stop_##name); \
+    float milliseconds_##name = 0; \
+    cudaEventElapsedTime(&milliseconds_##name, start_##name, stop_##name); \
+    printf("Time %s: %f ms\n", #name, milliseconds_##name); \
+    cudaEventDestroy(start_##name); \
+    cudaEventDestroy(stop_##name);
+
+// cuda probe
 void getCudaProperty() {
     int device_id;
     cudaGetDevice(&device_id);
@@ -33,6 +50,7 @@ void checkCudaMemoryUsage(const std::string& tag = "") {
     std::cout << std::endl;
 }
 
+// tensor traverse
 template <typename T>
 torch::Tensor to_tensor(const T& value, const torch::TensorOptions& options) {
     std::vector<uint8_t> buffer(reinterpret_cast<const uint8_t*>(value.data()),
