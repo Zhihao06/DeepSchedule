@@ -51,11 +51,116 @@
         default: EP_HOST_ASSERT(false && "Unsupported type"); \
     } while (false)
 
-#define SWITCH_HIDDEN(case_macro) \
+#define SWITCH_HIDDEN(inner_macro) \
     switch (hidden) { \
-        case 2560: case_macro(2560); \
-        case 4096: case_macro(4096); \
-        case 5120: case_macro(5120); \
-        case 7168: case_macro(7168); \
+        case 2048: inner_macro(2048); break; \
+        case 2560: inner_macro(2560); break; \
+        case 4096: inner_macro(4096); break; \
+        case 5120: inner_macro(5120); break; \
+        case 7168: inner_macro(7168); break; \
         default: EP_HOST_ASSERT(false && "Unsupported hidden"); \
+    } while (false)
+
+#define SWITCH_SMS(hidden_const, inner_macro) \
+    do { \
+        if (num_sms <= 4) { \
+            inner_macro(hidden_const, 4); \
+        } else if (num_sms <= 8) { \
+            inner_macro(hidden_const, 8); \
+        } else if (num_sms <= 12) { \
+            inner_macro(hidden_const, 12); \
+        } else if (num_sms <= 16) { \
+            inner_macro(hidden_const, 16); \
+        } else if (num_sms <= 20) { \
+            inner_macro(hidden_const, 20); \
+        } else if (num_sms <= 24) { \
+            inner_macro(hidden_const, 24); \
+        } else if (num_sms <= 28) { \
+            inner_macro(hidden_const, 28); \
+        } else if (num_sms <= 32) { \
+            inner_macro(hidden_const, 32); \
+        } else if (num_sms <= 36) { \
+            inner_macro(hidden_const, 36); \
+        } else if (num_sms <= 40) { \
+            inner_macro(hidden_const, 40); \
+        } else if (num_sms <= 44) { \
+            inner_macro(hidden_const, 44); \
+        } else if (num_sms <= 48) { \
+            inner_macro(hidden_const, 48); \
+        } else if (num_sms <= 52) { \
+            inner_macro(hidden_const, 52); \
+        } else if (num_sms <= 56) { \
+            inner_macro(hidden_const, 56); \
+        } else if (num_sms <= 60) { \
+            inner_macro(hidden_const, 60); \
+        } else if (num_sms <= 64) { \
+            inner_macro(hidden_const, 64); \
+        } else if (num_sms <= 68) { \
+            inner_macro(hidden_const, 68); \
+        } else if (num_sms <= 72) { \
+            inner_macro(hidden_const, 72); \
+        } else if (num_sms <= 76) { \
+            inner_macro(hidden_const, 76); \
+        } else if (num_sms <= 80) { \
+            inner_macro(hidden_const, 80); \
+        } else if (num_sms <= 84) { \
+            inner_macro(hidden_const, 84); \
+        } else if (num_sms <= 88) { \
+            inner_macro(hidden_const, 88); \
+        } else if (num_sms <= 92) { \
+            inner_macro(hidden_const, 92); \
+        } else if (num_sms <= 96) { \
+            inner_macro(hidden_const, 96); \
+        } else if (num_sms <= 100) { \
+            inner_macro(hidden_const, 100); \
+        } else if (num_sms <= 104) { \
+            inner_macro(hidden_const, 104); \
+        } else if (num_sms <= 108) { \
+            inner_macro(hidden_const, 108); \
+        } else if (num_sms <= 112) { \
+            inner_macro(hidden_const, 112); \
+        } else if (num_sms <= 116) { \
+            inner_macro(hidden_const, 116); \
+        } else if (num_sms <= 120) { \
+            inner_macro(hidden_const, 120); \
+        } else if (num_sms <= 124) { \
+            inner_macro(hidden_const, 124); \
+        } else if (num_sms <= 128) { \
+            inner_macro(hidden_const, 128); \
+        } else if (num_sms <= 132) { \
+            inner_macro(hidden_const, 132); \
+        } else { \
+            EP_HOST_ASSERT(false && "num_sms too large"); \
+        } \
+    } while (false)
+
+#define SWITCH_EXPERTS(hidden_const, num_sms_const, case_macro) \
+    do { \
+        if (num_experts <= num_sms_const) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 1, 32); \
+        } else if (num_experts <= num_sms_const * 2) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 2, 16); \
+        } else if (num_experts <= num_sms_const * 3) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 3, 10); \
+        } else if (num_experts <= num_sms_const * 4) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 4, 8); \
+        } else if (num_experts <= num_sms_const * 5) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 5, 6); \
+        } else if (num_experts <= num_sms_const * 6) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 6, 5); \
+        } else if (num_experts <= num_sms_const * 7) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 7, 4); \
+        } else if (num_experts <= num_sms_const * 8) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 8, 4); \
+        } else if (num_experts <= num_sms_const * 9) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 9, 3); \
+        } else if (num_experts <= num_sms_const * 10) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 10, 3); \
+        } else if (num_experts <= num_sms_const * 16) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 16, 2); \
+        } else if (num_experts <= num_sms_const * 32) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 32, 2); \
+        } else { \
+            EP_HOST_ASSERT(false && "Unsupported expert"); \
+        } \
     } while (false)

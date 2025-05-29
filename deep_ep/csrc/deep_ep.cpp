@@ -1040,7 +1040,7 @@ void Buffer::clean_low_latency_buffer(int num_max_dispatch_tokens_per_rank, int 
 
 std::tuple<torch::Tensor, std::optional<torch::Tensor>, torch::Tensor, torch::Tensor, torch::Tensor, std::optional<EventHandle>, std::optional<std::function<void()>>>
 Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_idx,
-                             int num_max_dispatch_tokens_per_rank, int num_experts,
+                             int num_max_dispatch_tokens_per_rank, int num_experts, int num_sms,
                              bool use_fp8, bool async, bool return_recv_hook) {
     EP_HOST_ASSERT(low_latency_mode);
 
@@ -1100,7 +1100,7 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
                                x.data_ptr(), topk_idx.data_ptr<int64_t>(),
                                next_clean_meta.first, next_clean_meta.second,
                                num_tokens, hidden, num_max_dispatch_tokens_per_rank,
-                               num_topk, num_experts, rank, num_ranks, use_fp8,
+                               num_topk, num_experts, rank, num_ranks, num_sms, use_fp8,
                                workspace, launch_stream, phases);
     };
     launcher(return_recv_hook ? LOW_LATENCY_SEND_PHASE : (LOW_LATENCY_SEND_PHASE | LOW_LATENCY_RECV_PHASE));
@@ -1127,7 +1127,7 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
 std::tuple<torch::Tensor, std::optional<EventHandle>, std::optional<std::function<void()>>>
 Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_idx, const torch::Tensor& topk_weights,
                             const torch::Tensor& src_info, const torch::Tensor& layout_range,
-                            int num_max_dispatch_tokens_per_rank, int num_experts,
+                            int num_max_dispatch_tokens_per_rank, int num_experts, int num_sms,
                             bool zero_copy, bool async, bool return_recv_hook,
                             const std::optional<torch::Tensor>& out) {
     EP_HOST_ASSERT(low_latency_mode);
@@ -1187,7 +1187,7 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
                               src_info.data_ptr<int>(), layout_range.data_ptr<int64_t>(),
                               next_clean_meta.first, next_clean_meta.second,
                               num_combined_tokens, hidden, num_max_dispatch_tokens_per_rank,
-                              num_topk, num_experts, rank, num_ranks,
+                              num_topk, num_experts, rank, num_ranks, num_sms,
                               workspace, launch_stream,
                               phases, zero_copy);
     };
