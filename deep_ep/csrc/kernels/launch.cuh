@@ -53,6 +53,7 @@
 
 #define SWITCH_HIDDEN(inner_macro) \
     switch (hidden) { \
+        case 2048: inner_macro(2048); break; \
         case 2560: inner_macro(2560); break; \
         case 4096: inner_macro(4096); break; \
         case 5120: inner_macro(5120); break; \
@@ -62,7 +63,13 @@
 
 #define SWITCH_SMS(hidden_const, inner_macro) \
     do { \
-        if (num_sms <= 16) { \
+        if (num_sms <= 4) { \
+            inner_macro(hidden_const, 4); \
+        } else if (num_sms <= 8) { \
+            inner_macro(hidden_const, 8); \
+        } else if (num_sms <= 12) { \
+            inner_macro(hidden_const, 12); \
+        } else if (num_sms <= 16) { \
             inner_macro(hidden_const, 16); \
         } else if (num_sms <= 20) { \
             inner_macro(hidden_const, 20); \
@@ -151,6 +158,8 @@
             case_macro(hidden_const, num_sms_const, num_experts, 10, 3); \
         } else if (num_experts <= num_sms_const * 16) { \
             case_macro(hidden_const, num_sms_const, num_experts, 16, 2); \
+        } else if (num_experts <= num_sms_const * 32) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 32, 2); \
         } else { \
             EP_HOST_ASSERT(false && "Unsupported expert"); \
         } \
