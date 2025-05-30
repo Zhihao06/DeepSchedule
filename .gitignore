@@ -4,6 +4,7 @@ compile_commands.json
 *.pyc
 build/
 .cache/
+__pycache__
 .vscode/
 */cmake-build-*/
 
