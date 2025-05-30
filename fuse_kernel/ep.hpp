@@ -110,7 +110,9 @@ void ep_moe_core_(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_ran
     std::tuple<torch::Tensor, torch::Tensor> x_fp8_2,
     std::tuple<torch::Tensor, torch::Tensor> y_fp8_2,
     torch::Tensor out_2,
-    std::shared_ptr<FUSEConfig>& fuse_config) {
+    std::shared_ptr<FUSEConfig>& fuse_config,
+    bool enable_profile) {
+        if (enable_profile) cudaProfilerStart();
         auto [
             packed_recv_x, 
             packed_recv_x_scales, 
@@ -151,6 +153,7 @@ void ep_moe_core_(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_ran
             event_,
             hook_
         ] = buffer->low_latency_combine(out_2.view(packed_recv_x.sizes()), topk_ids, topk_weights, src_info, layout_range, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, std::nullopt/*out: inplace tensor*/);
+        if (enable_profile) cudaProfilerStop();
 }
 
 void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, uint64_t num_topk, uint64_t world_size) {
@@ -219,23 +222,27 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
         hook_
     ] = buffer->low_latency_combine(out_2.view(packed_recv_x.sizes()), topk_ids, topk_weights, src_info, layout_range, num_max_dispatch_tokens_per_rank, num_experts, 43, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, std::nullopt/*out: inplace tensor*/);
 
-    std::shared_ptr<FUSEConfig> fuse_config = std::make_shared<FUSEConfig>(78, 43);
-    for (auto i=0; i<10; i++) {
-        ep_moe_core_(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens,
-            num_topk, world_size, num_groups, expected_m, m_max, current_stream, 
-            buffer, 
-            hidden_states,
-            topk_ids,
-            topk_weights,
-            x_fp8,
-            y_fp8,
-            out,
-            x_fp8_2,
-            y_fp8_2,
-            out_2,
-            fuse_config
-        );
+    for (auto ep_sms = 44; ep_sms <= 45; ep_sms += 4) {
+        std::shared_ptr<FUSEConfig> fuse_config = std::make_shared<FUSEConfig>(78, 44);
+        for (auto i=0; i<10; i++) {
+            ep_moe_core_(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens,
+                num_topk, world_size, num_groups, expected_m, m_max, current_stream, 
+                buffer, 
+                hidden_states,
+                topk_ids,
+                topk_weights,
+                x_fp8,
+                y_fp8,
+                out,
+                x_fp8_2,
+                y_fp8_2,
+                out_2,
+                fuse_config,
+                false
+            );
+        }
     }
+
     // // Prepare Cuda Graph
     // cudaGraph_t graph;
     // cudaGraphExec_t instance;

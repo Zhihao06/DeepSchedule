@@ -1,6 +1,7 @@
 #include <cuda.h>
 #include <cuda_fp8.h>
 #include <cuda_runtime.h>
+#include <cuda_profiler_api.h>
 #include <iostream>
 #include "ep.hpp"
 
