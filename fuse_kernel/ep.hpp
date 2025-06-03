@@ -9,7 +9,7 @@
 
 #include "deep_ep.hpp"
 #include "config.hpp"
-#include "gemm.cuh"
+#include "tools/gemm_gen.hpp"
 #include "tools/data.hpp"
 #include "tools/utils.hpp"
 #include "tools/debug.hpp"
@@ -18,6 +18,8 @@
 using namespace deep_ep;
 using namespace c10d;
 using namespace internode;
+
+#define TEMPLATE_SMS 54
 
 std::shared_ptr<ProcessGroupNCCL> global_pg;
 
@@ -123,7 +125,7 @@ void ep_moe_core_(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_ran
             hook
         ] = buffer->low_latency_dispatch(hidden_states, topk_ids, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*async_finish*/, false/*return_recv_hook*/);
         auto handle = std::make_tuple(packed_recv_src_info, packed_recv_layout_range, num_max_dispatch_tokens_per_rank, hidden_states.size(1), num_experts);
-        launch_gemm(
+        get_function_for_gemm(num_tokens, khidden, hidden_size, num_groups, TEMPLATE_SMS)(
             std::get<0>(x_fp8).data_ptr(), std::get<1>(x_fp8).data_ptr(),
             std::get<0>(y_fp8).data_ptr(), std::get<1>(y_fp8).data_ptr(),
             out.data_ptr(),
@@ -132,7 +134,7 @@ void ep_moe_core_(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_ran
             current_stream,
             fuse_config->gemm_sms
         );
-        launch_gemm(
+        get_function_for_gemm(num_tokens, hidden_size, khidden / 2, num_groups, TEMPLATE_SMS)(
             std::get<0>(x_fp8_2).data_ptr(), std::get<1>(x_fp8_2).data_ptr(),
             std::get<0>(y_fp8_2).data_ptr(), std::get<1>(y_fp8_2).data_ptr(),
             out_2.data_ptr(),
@@ -191,7 +193,7 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
         hook
     ] = buffer->low_latency_dispatch(hidden_states, topk_ids, num_max_dispatch_tokens_per_rank, num_experts, 43, true/*use_fp8*/, false/*async_finish*/, false/*return_recv_hook*/);
     auto handle = std::make_tuple(packed_recv_src_info, packed_recv_layout_range, num_max_dispatch_tokens_per_rank, hidden_states.size(1), num_experts);
-    launch_gemm(
+    get_function_for_gemm(num_tokens, khidden, hidden_size, num_groups, TEMPLATE_SMS)(
         std::get<0>(x_fp8).data_ptr(), std::get<1>(x_fp8).data_ptr(),
         std::get<0>(y_fp8).data_ptr(), std::get<1>(y_fp8).data_ptr(),
         out.data_ptr(),
@@ -200,7 +202,7 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
         current_stream,
         78
     );
-    launch_gemm(
+    get_function_for_gemm(num_tokens, hidden_size, khidden / 2, num_groups, TEMPLATE_SMS)(
         std::get<0>(x_fp8_2).data_ptr(), std::get<1>(x_fp8_2).data_ptr(),
         std::get<0>(y_fp8_2).data_ptr(), std::get<1>(y_fp8_2).data_ptr(),
         out_2.data_ptr(),
@@ -238,7 +240,7 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
                 y_fp8_2,
                 out_2,
                 fuse_config,
-                false
+                true
             );
         }
     }
