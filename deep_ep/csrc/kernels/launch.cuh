@@ -55,9 +55,12 @@
     switch (hidden) { \
         case 2048: inner_macro(2048); break; \
         case 2560: inner_macro(2560); break; \
+        case 3072: inner_macro(3072); break; \
         case 4096: inner_macro(4096); break; \
         case 5120: inner_macro(5120); break; \
         case 7168: inner_macro(7168); break; \
+        case 8192: inner_macro(8192); break; \
+        case 16384: inner_macro(16384); break; \
         default: EP_HOST_ASSERT(false && "Unsupported hidden"); \
     } while (false)
 
