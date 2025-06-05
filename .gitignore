@@ -21,9 +21,12 @@ third-party/
 # Third-party links created by `setup.py develop`
 deep_gemm/include/cute
 deep_gemm/include/cutlass
+deep_gemm/kernels/*.cu
 
 output_log/
 *.nsys-rep
 *.sqlite
 *.dict
 *.csv
+lib
+backup

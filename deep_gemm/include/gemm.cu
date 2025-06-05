@@ -48,7 +48,3 @@ void launch_gemm(void* __raw_lhs, void* __raw_lhs_scales, void* __raw_rhs, void*
                 tma_a_desc, tma_b_desc, tma_scales_a_desc, tma_d_desc,
                 stream, num_sms, smem_size);
 }
-
-/*
-    use gemm_codegen.py to get code like: template void launch_gemm<3072, 4096, 64, 160, 128, 0, 64, 16, 4, 1, true, 136512>(void* __raw_lhs, void* __raw_lhs_scales, void* __raw_rhs, void* __raw_rhs_scales, void* __raw_out, void* __raw_grouped_layout, int m, void* __raw_stream, int num_sms);
-*/

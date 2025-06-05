@@ -54,6 +54,11 @@ void launch_gemm(void* __raw_lhs, void* __raw_lhs_scales, void* __raw_rhs, void*
 }
 """
 
+code_gemm_kernel = """#include "cutlass/cutlass.h"
+#include "deep_gemm/fp8_gemm.cuh"
+#include "gemm.cu"
+"""
+
 code_gemm_gen_hpp = """
 #pragma once
 
@@ -65,7 +70,14 @@ using GemmLauncherFunc = void (*)(void*, void*, void*, void*, void*, void*, int,
 GemmLauncherFunc get_function_for_gemm(int num_tokens, int hidden, int intermediate, int num_groups, int sms) {"""
 
 code_gemm_end = """
-    else throw std::runtime_error("unsupported parameters for gemm!");
+    else {
+        throw std::runtime_error("Unsupported parameters for gemm: num_tokens=" + 
+                                std::to_string(num_tokens) + ", hidden=" + 
+                                std::to_string(hidden) + ", intermediate=" + 
+                                std::to_string(intermediate) + ", num_groups=" +
+                                std::to_string(num_groups) + ", sms=" +
+                                std::to_string(sms));
+    }
 }
 """
 
@@ -78,6 +90,7 @@ template void launch_gemm<{SHAPE_N}, {SHAPE_K}, {BLOCK_M}, {BLOCK_N}, {BLOCK_K},
 def generate_kernel_template(num_tokens_l: List, hidden_l: List, intermediate_l: List, num_groups_l: List, sms_l: List):
     global code_gemm_cu, code_gemm_gen_hpp, code_gemm_end
     is_first = True
+    gemm_cu_set = set()
     for num_tokens in num_tokens_l:
         expected_m = max(1, (num_tokens * 8 + 128 - 1) / 128 * 2)
         for hidden in hidden_l:
@@ -86,9 +99,9 @@ def generate_kernel_template(num_tokens_l: List, hidden_l: List, intermediate_l:
                     for sms in sms_l:
                         n = intermediate
                         k = hidden
-                        num_sms, block_m, block_n, num_stages, tma_multicast_config, smem_config = get_best_configs(expected_m, n, k, num_groups, sms, is_grouped_masked=True)
+                        num_sms, block_m, block_n, num_stages, tma_multicast_config, smem_config, num_waves = get_best_configs(expected_m, n, k, num_groups, sms, is_grouped_masked=True)
                         code_gemm_gen_hpp += gemm_gen_branch(num_tokens, n, k, num_groups, sms, is_first, n, k, block_m, block_n, 128, smem_config[2], smem_config[1], num_groups, num_stages, tma_multicast_config[0], tma_multicast_config[1], smem_config[0])
-                        code_gemm_cu += gemm_cu_branch(n, k, block_m, block_n, 128, smem_config[2], smem_config[1], num_groups, num_stages, tma_multicast_config[0], tma_multicast_config[1], smem_config[0])
+                        gemm_cu_set.add((n, k, block_m, block_n, 128, smem_config[2], smem_config[1], num_groups, num_stages, tma_multicast_config[0], tma_multicast_config[1], smem_config[0]))
                         print(
                             f"SHAPE_N, SHAPE_K, BLOCK_M, BLOCK_N, BLOCK_K, BLOCK_N_PADDING, kSwizzleDMode, kNumGroups, kNumStages, kNumTMAMulticast, kIsTMAMulticastOnA, SMEM_SIZE>\n"
                             f"<{n}, {k}, {block_m}, {block_n}, {128}, {smem_config[2]}, {smem_config[1]}, {num_groups}, {num_stages}, {tma_multicast_config[0]}, {tma_multicast_config[1]}, {smem_config[0]}>\n"
@@ -98,23 +111,29 @@ def generate_kernel_template(num_tokens_l: List, hidden_l: List, intermediate_l:
 
                         n = hidden
                         k = int(intermediate/2)
-                        num_sms, block_m, block_n, num_stages, tma_multicast_config, smem_config = get_best_configs(expected_m, n, k, num_groups, sms, is_grouped_masked=True)
+                        num_sms, block_m, block_n, num_stages, tma_multicast_config, smem_config, num_waves = get_best_configs(expected_m, n, k, num_groups, sms, is_grouped_masked=True)
                         code_gemm_gen_hpp += gemm_gen_branch(num_tokens, n, k, num_groups, sms, is_first, n, k, block_m, block_n, 128, smem_config[2], smem_config[1], num_groups, num_stages, tma_multicast_config[0], tma_multicast_config[1], smem_config[0])
-                        code_gemm_cu += gemm_cu_branch(n, k, block_m, block_n, 128, smem_config[2], smem_config[1], num_groups, num_stages, tma_multicast_config[0], tma_multicast_config[1], smem_config[0])
+                        gemm_cu_set.add((n, k, block_m, block_n, 128, smem_config[2], smem_config[1], num_groups, num_stages, tma_multicast_config[0], tma_multicast_config[1], smem_config[0]))
+
+    for gemm_cu_config in gemm_cu_set:
+        text = ""
+        text += code_gemm_kernel
+        text += gemm_cu_branch(*gemm_cu_config)
+        file_name = "kernels/kernel.m_grouped_gemm_fp8_fp8_bf16_nt." + "_".join(map(str, gemm_cu_config)) + ".cu"
+        with open(file_name, "w") as f:
+            f.write(text)
 
     code_gemm_gen_hpp += code_gemm_end
-    with open("./include/gemm.cu", "w") as f:
-        f.write(code_gemm_cu)
     with open("../fuse_kernel/tools/gemm_gen.hpp", "w") as f:
         f.write(code_gemm_gen_hpp)
 
 def test_best_configs():
-    expected_m, n, k, num_groups = 4, 3072, 2048, 16
-    num_sms, block_m, block_n, num_stages, tma_multicast_config, smem_config = get_best_configs(expected_m, n, k, num_groups, get_num_sms(), is_grouped_masked=True)
+    expected_m, n, k, num_groups, sms = 16, 4096, 1536, 16, 50
+    num_sms, block_m, block_n, num_stages, tma_multicast_config, smem_config, num_waves = get_best_configs(expected_m, n, k, num_groups, sms, is_grouped_masked=True)
     print(
         f"SHAPE_N, SHAPE_K, BLOCK_M, BLOCK_N, BLOCK_K, BLOCK_N_PADDING, kSwizzleDMode, kNumGroups, kNumStages, kNumTMAMulticast, kIsTMAMulticastOnA, SMEM_SIZE>\n"
         f"<{n}, {k}, {block_m}, {block_n}, {128}, {smem_config[2]}, {smem_config[1]}, {num_groups}, {num_stages}, {tma_multicast_config[0]}, {tma_multicast_config[1]}, {smem_config[0]}>\n"
-        f"num_sms={num_sms}, block_m={block_m}, block_n={block_n}, num_stages={num_stages}, tma_multicast_config={tma_multicast_config}, smem_config={smem_config}"
+        f"num_sms={num_sms}, block_m={block_m}, block_n={block_n}, num_stages={num_stages}, tma_multicast_config={tma_multicast_config}, smem_config={smem_config}, num_waves={num_waves}"
     )
 
 if __name__ == "__main__":
@@ -126,3 +145,11 @@ if __name__ == "__main__":
         [54] # sms_l
     )
 
+    # generate_kernel_template(
+    #     [32, 64, 128, 256, 512], # num_tokens_l
+    #     [2048, 4096, 8192, 16384], # hidden_l
+    #     [2048, 3072, 4096, 8192, 16384], # intermediate_l
+    #     [4, 8, 16, 32], # num_groups_l
+    #     range(6, 66, 4) # sms_l
+    # )
+    # test_best_configs()
