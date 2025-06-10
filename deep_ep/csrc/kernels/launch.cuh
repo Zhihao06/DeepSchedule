@@ -159,10 +159,8 @@
             case_macro(hidden_const, num_sms_const, num_experts, 9, 3); \
         } else if (num_experts <= num_sms_const * 10) { \
             case_macro(hidden_const, num_sms_const, num_experts, 10, 3); \
-        } else if (num_experts <= num_sms_const * 16) { \
-            case_macro(hidden_const, num_sms_const, num_experts, 16, 2); \
-        } else if (num_experts <= num_sms_const * 32) { \
-            case_macro(hidden_const, num_sms_const, num_experts, 32, 2); \
+        } else if (num_experts <= num_sms_const * 14) { \
+            case_macro(hidden_const, num_sms_const, num_experts, 14, 2); \
         } else { \
             EP_HOST_ASSERT(false && "Unsupported expert"); \
         } \
