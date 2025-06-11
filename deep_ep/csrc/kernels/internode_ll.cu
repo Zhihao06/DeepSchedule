@@ -2,6 +2,9 @@
 #include "exception.cuh"
 #include "launch.cuh"
 #include "ibgda_device.cuh"
+#include "timer.cuh"
+
+#define ENABLE_TIMING
 
 namespace deep_ep {
 
@@ -69,7 +72,7 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
          int* next_clean, int num_next_clean_int,
          int num_tokens, int num_max_dispatch_tokens_per_rank,
          int num_topk, int num_experts, int rank, int num_ranks,
-         int phases, int* grid_sync_counter) {
+         int phases, int* grid_sync_counter, unsigned long long* timing_array, int num_timing_phases) {
     const auto sm_id = static_cast<int>(blockIdx.x);
     const auto thread_id = static_cast<int>(threadIdx.x);
     const auto warp_id = thread_id / 32, lane_id = get_lane_id();
@@ -79,6 +82,13 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
     const auto warp_group_id = warp_id / kNumWarpsPerGroup;
     const auto sub_warp_id = warp_id % kNumWarpsPerGroup;
     const auto responsible_expert_idx = sm_id * kNumWarpGroups + warp_group_id;
+
+#ifdef ENABLE_TIMING
+    unsigned long long ts0 = 0, ts1 = 0, ts2 = 0, ts3 = 0, ts4 = 0, ts5 = 0, ts6 = 0;
+    unsigned long long te0 = 0, te1 = 0, te2 = 0, te3 = 0, te4 = 0, te5 = 0, te6 = 0;
+    // Runtime (start)
+    kernel_timer(&ts0, sm_id, thread_id);
+#endif
 
     // FP8 staffs
     constexpr int kNumPerChannels = 128;
@@ -101,6 +111,11 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
     // Expert counts
     __shared__ int shared_num_tokens_sent_per_expert[kNumWarpGroups];
 
+#ifdef ENABLE_TIMING
+    // Phase 0 and 1: FP8 cast and IBGDA send and topk_idx count (start)
+    kernel_timer(&ts1, sm_id, thread_id);
+#endif
+
     // There are 2 kinds of warps in this part:
     // 1. The first-kind warps for FP8 cast and sending top-k tokens
     // 2. The last warp for reading `topk_idx` and count for per-expert information
@@ -120,6 +135,11 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
             // Overlap top-k index read and source token index write
             auto dst_expert_idx = warp_id < num_topk ? static_cast<int>(__ldg(topk_idx + token_idx * num_topk + warp_id)) : -1;
             thread_id == 0 ? (*rdma_x_src_idx = token_idx) : 0;
+
+#ifdef ENABLE_TIMING
+            // Phase 0: FP8 cast (start)
+            kernel_timer(&ts2, sm_id, thread_id);
+#endif
 
             // FP8 cast
             #pragma unroll
@@ -160,6 +180,14 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
             }
             asm volatile("bar.sync 1, %0;" :: "r"(num_threads));
 
+#ifdef ENABLE_TIMING
+            // Phase 0: FP8 cast (end)
+            kernel_timer(&te2, sm_id, thread_id);
+
+            // Phase 1: IBGDA (start)
+            kernel_timer(&ts3, sm_id, thread_id);
+#endif
+
             // Issue IBGDA sends
             if (dst_expert_idx >= 0) {
                 int slot_idx = lane_id == 0 ? atomicAdd(atomic_counter_per_expert + dst_expert_idx, 1) : 0;
@@ -184,6 +212,12 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
                 __syncwarp();
                 lane_id == 0 ? atomic_add_release_global(atomic_finish_counter_per_expert + dst_expert_idx, 1) : 0;
             }
+
+#ifdef ENABLE_TIMING
+            // Phase 1: IBGDA (end)
+            kernel_timer(&te3, sm_id, thread_id);
+#endif
+
         }
     } else if (warp_id == num_warps - 1) {
         EP_DEVICE_ASSERT(num_sms > 1);
@@ -228,6 +262,14 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
     }
     __syncthreads();
 
+#ifdef ENABLE_TIMING
+    // Phase 0 and 1: FP8 cast and IBGDA send and topk_idx count (end)
+    kernel_timer(&te1, sm_id, thread_id);
+
+    // Phase 2: Count send (start)
+    kernel_timer(&ts4, sm_id, thread_id);
+#endif
+
     // Issue count sends
     if (responsible_expert_idx < num_experts and sub_warp_id == 0 and lane_id == 0) {
         const auto dst_rank = responsible_expert_idx / num_local_experts;
@@ -251,6 +293,11 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
             packed_recv_count[dst_expert_local_idx] = 0;
     }
     __syncwarp();
+
+#ifdef ENABLE_TIMING
+    // Phase 2: Count send (end)
+    kernel_timer(&te4, sm_id, thread_id);
+#endif
 
     // Receiving phase
     LOW_LATENCY_DISPATCH_RECV:
@@ -283,6 +330,11 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
         // Shared between sub-warps in warp groups
         __shared__ int shared_num_recv_tokens[kNumWarpGroups], shared_recv_token_begin_idx[kNumWarpGroups];
 
+#ifdef ENABLE_TIMING
+        // Phase 3: Wait tokens to arrive (start)
+        kernel_timer(&ts5, sm_id, thread_id);
+#endif
+
         // Wait tokens to arrive
         // NOTES: using sub-warp 1 to overlap with sub-warp 0
         int num_recv_tokens, recv_token_begin_idx;
@@ -298,6 +350,14 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
         asm volatile("bar.sync %0, %1;" :: "r"(warp_group_id + 2), "r"(kNumWarpsPerGroup * 32));
         num_recv_tokens = shared_num_recv_tokens[warp_group_id];
         recv_token_begin_idx = shared_recv_token_begin_idx[warp_group_id];
+
+#ifdef ENABLE_TIMING
+        // Phase 3: Wait tokens to arrive (end)
+        kernel_timer(&te5, sm_id, thread_id);
+
+        // Phase 4: Copy tokens (start)
+        kernel_timer(&ts6, sm_id, thread_id);
+#endif
 
         // Copy tokens
         EP_DEVICE_ASSERT(num_scales <= 64);
@@ -325,7 +385,24 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
                 (lane_id + 32) < num_scales ? dst_scales[(lane_id + 32) * scale_stride] = scale_1 : 0.0f;
             }
         }
+
+#ifdef ENABLE_TIMING
+        // Phase 5: Copy tokens (end)
+        kernel_timer(&te6, sm_id, thread_id);
+#endif
     }
+#ifdef ENABLE_TIMING
+    kernel_timer(&te0, sm_id, thread_id);
+    if (sm_id == 0 and thread_id == 0) {
+        timing_array[blockIdx.x * num_timing_phases + 0] = te0 - ts0;
+        timing_array[blockIdx.x * num_timing_phases + 1] = te1 - ts1;
+        timing_array[blockIdx.x * num_timing_phases + 2] = te2 - ts2;
+        timing_array[blockIdx.x * num_timing_phases + 3] = te3 - ts3;
+        timing_array[blockIdx.x * num_timing_phases + 4] = te4 - ts4;
+        timing_array[blockIdx.x * num_timing_phases + 5] = te5 - ts5;
+        timing_array[blockIdx.x * num_timing_phases + 6] = te6 - ts6;
+    }
+#endif
 }
 
 void dispatch(void* packed_recv_x, float* packed_recv_x_scales,
@@ -336,7 +413,7 @@ void dispatch(void* packed_recv_x, float* packed_recv_x_scales,
               int* next_clean, int num_next_clean_int,
               int num_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
               int num_topk, int num_experts, int rank, int num_ranks, int num_sms, bool use_fp8,
-              void* workspace, cudaStream_t stream, int phases, int* grid_sync_counter) {
+              void* workspace, cudaStream_t stream, int phases, int* grid_sync_counter, unsigned long long* timing_array, int num_timing_phases) {
     const int kNumMaxTopK = 9;
     const int kNumWarpGroups = get_kNumWarpGroups(num_experts, num_sms);
     const int kNumWarpsPerGroup = get_kNumWarpsPerGroup(kNumWarpGroups);
@@ -364,7 +441,7 @@ LAUNCH_KERNEL(&cfg, dispatch_func, \
               atomic_counter_per_expert, atomic_finish_counter_per_expert, \
               next_clean, num_next_clean_int, \
               num_tokens, num_max_dispatch_tokens_per_rank, \
-              num_topk, num_experts, rank, num_ranks, phases, grid_sync_counter); } break
+              num_topk, num_experts, rank, num_ranks, phases, grid_sync_counter, timing_array, num_timing_phases); } break
 
     #define SMS_CASE_MACRO(hidden_const, num_sms_const) SWITCH_EXPERTS(hidden_const, num_sms_const, DISPATCH_LAUNCH_CASE)
     #define HIDDEN_CASE_MACRO(hidden_const) SWITCH_SMS(hidden_const, SMS_CASE_MACRO)
@@ -385,7 +462,8 @@ combine(void* combined_x,
         int num_combined_tokens, int hidden, int num_topk,
         int num_max_dispatch_tokens_per_rank,
         int num_experts, int rank, int num_ranks,
-        int phases, bool zero_copy, int* grid_sync_counter) {
+        int phases, bool zero_copy, int* grid_sync_counter,
+        unsigned long long* timing_array, int num_timing_phases) {
     const auto sm_id = static_cast<int>(blockIdx.x);
     const auto num_sms = static_cast<int>(gridDim.x);
     const auto thread_id = static_cast<int>(threadIdx.x);
@@ -395,6 +473,13 @@ combine(void* combined_x,
     const auto warp_group_id = warp_id / kNumWarpsPerGroup;
     const auto sub_warp_id = warp_id % kNumWarpsPerGroup;
     const auto responsible_expert_idx = sm_id * kNumWarpGroups + warp_group_id;
+
+#ifdef ENABLE_TIMING
+    unsigned long long ts0 = 0, ts1 = 0, ts2 = 0, ts3 = 0, ts4 = 0, ts5 = 0, ts6 = 0;
+    unsigned long long te0 = 0, te1 = 0, te2 = 0, te3 = 0, te4 = 0, te5 = 0, te6 = 0;
+    // Runtime (start)
+    kernel_timer(&ts0, sm_id, thread_id);
+#endif
 
     // Data type staffs
     constexpr int kNumElemsPerInt4 = sizeof(int4) / sizeof(nv_bfloat16);
@@ -424,6 +509,11 @@ combine(void* combined_x,
         if (lane_id == 0)
             atomic_add_release_global(atomic_clean_flag, num_experts);
     }
+
+#ifdef ENABLE_TIMING
+    // Phase 0: Issue IBGDA sends (start)
+    kernel_timer(&ts1, sm_id, thread_id);
+#endif
 
     // Issue IBGDA sends
     if (responsible_expert_idx < num_experts) {
@@ -527,10 +617,20 @@ combine(void* combined_x,
         __syncwarp();
     }
 
+#ifdef ENABLE_TIMING
+    // Phase 0: Issue IBGDA sends (end)
+    kernel_timer(&te1, sm_id, thread_id);
+#endif
+
     // Receiving phase
     LOW_LATENCY_COMBINE_RECV:
     if ((phases & LOW_LATENCY_RECV_PHASE) == 0)
         return;
+
+#ifdef ENABLE_TIMING
+    // Phase 1: Wait all ranks to arrive (start)
+    kernel_timer(&ts2, sm_id, thread_id);
+#endif
 
     // Wait all ranks to arrive and notify PCIe usage
     if (responsible_expert_idx < num_experts) {
@@ -545,6 +645,14 @@ combine(void* combined_x,
         while((arrived_sms = ld_acquire_global(grid_sync_counter)) != num_sms);
     }
     __syncthreads();
+
+#ifdef ENABLE_TIMING
+    // Phase 1: Wait all ranks to arrive (end)
+    kernel_timer(&te2, sm_id, thread_id);
+
+    // Phase 2: Reduce and FP8 cast (start)
+    kernel_timer(&ts3, sm_id, thread_id);
+#endif
 
     // Reduce tokens with FP8 cast
     EP_DEVICE_ASSERT(num_topk <= 32 and hidden_bf16_int4 <= num_threads);
@@ -592,6 +700,24 @@ combine(void* combined_x,
             (reinterpret_cast<int4*>(combined_x) + token_idx * hidden_bf16_int4)[thread_id] = combined_int4;
         }
     }
+
+#ifdef ENABLE_TIMING
+    // Phase 2: Reduce and FP8 cast (end)
+    kernel_timer(&te3, sm_id, thread_id);
+
+    // Runtime (end)
+    kernel_timer(&te0, sm_id, thread_id);
+
+    if (sm_id == 0 and thread_id == 0) {
+        timing_array[blockIdx.x * num_timing_phases + 0] = te0 - ts0;
+        timing_array[blockIdx.x * num_timing_phases + 1] = te1 - ts1;
+        timing_array[blockIdx.x * num_timing_phases + 2] = te2 - ts2;
+        timing_array[blockIdx.x * num_timing_phases + 3] = te3 - ts3;
+        timing_array[blockIdx.x * num_timing_phases + 4] = te4 - ts4;
+        timing_array[blockIdx.x * num_timing_phases + 5] = te5 - ts5;
+        timing_array[blockIdx.x * num_timing_phases + 6] = te6 - ts6;
+    }
+#endif
 }
 
 void combine(void* combined_x,
@@ -602,7 +728,7 @@ void combine(void* combined_x,
              int num_combined_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
              int num_topk, int num_experts, int rank, int num_ranks, int num_sms, bool use_fp8,
              void* workspace, cudaStream_t stream,
-             int phases, bool zero_copy, int* grid_sync_counter) {
+             int phases, bool zero_copy, int* grid_sync_counter, unsigned long long* timing_array, int num_timing_phases) {
     const int kNumMaxTopk = 9;
     const int kNumWarpGroups = get_kNumWarpGroups(num_experts, num_sms);
     const int kNumWarpsPerGroup = get_kNumWarpsPerGroup(kNumWarpGroups);
@@ -628,7 +754,7 @@ LAUNCH_KERNEL(&cfg, combine_func, \
               num_combined_tokens, hidden, num_topk, \
               num_max_dispatch_tokens_per_rank, \
               num_experts, rank, num_ranks, \
-              phases, zero_copy, grid_sync_counter); } break
+              phases, zero_copy, grid_sync_counter, timing_array, num_timing_phases); } break
 
     #define SMS_CASE_MACRO(hidden_const, num_sms_const) SWITCH_EXPERTS(hidden_const, num_sms_const, COMBINE_LAUNCH_CASE)
     #define HIDDEN_CASE_MACRO(hidden_const) SWITCH_SMS(hidden_const, SMS_CASE_MACRO)

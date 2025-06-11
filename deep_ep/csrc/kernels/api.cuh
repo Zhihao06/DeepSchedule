@@ -138,7 +138,7 @@ void dispatch(void* packed_recv_x, float* packed_recv_x_scales,
               int* next_clean, int num_next_clean_int,
               int num_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
               int num_topk, int num_experts, int rank, int num_ranks, int num_sms, bool use_fp8,
-              void* workspace, cudaStream_t stream, int phases, int* grid_sync_counter);
+              void* workspace, cudaStream_t stream, int phases, int* grid_sync_counter, unsigned long long* timing_array, int num_timing_phases);
 
 void combine(void* combined_x,
              void* rdma_recv_x, int* rdma_recv_flag, void* rdma_send_x,
@@ -148,7 +148,7 @@ void combine(void* combined_x,
              int num_combined_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
              int num_topk, int num_experts, int rank, int num_ranks, int num_sms, bool use_fp8,
              void* workspace, cudaStream_t stream,
-             int phases, bool zero_copy, int* grid_sync_counter);
+             int phases, bool zero_copy, int* grid_sync_counter, unsigned long long* timing_array, int num_timing_phases);
 
 } // namespace internode_ll
 

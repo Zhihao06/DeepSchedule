@@ -12,6 +12,9 @@
 #include "kernels/configs.cuh"
 #include "kernels/exception.cuh"
 
+#define USE_CUDA_GRAPH
+#define ENABLE_TIMING
+
 namespace deep_ep {
 
 Buffer::Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_bytes, bool low_latency_mode,
@@ -1070,6 +1073,19 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
         packed_recv_x_scales_ptr = packed_recv_x_scales->data_ptr<float>();
     }
 
+#ifdef ENABLE_TIMING
+    int num_timing_blocks = 1;
+    int num_timing_phases = 7;
+    unsigned long long* timing_array = nullptr;
+    cudaMalloc(&timing_array, num_timing_blocks * num_timing_phases * sizeof(unsigned long long));
+    cudaMemset(timing_array, 0, num_timing_blocks * num_timing_phases * sizeof(unsigned long long));
+    cudaDeviceSynchronize();
+#else
+    int num_timing_blocks = 1;
+    int num_timing_phases = -1;
+    unsigned long long* timing_array = nullptr;
+#endif
+
     // Set Concurrent Grid Sync Counter
     cudaMemsetAsync(grid_sync_counter, 0, sizeof(int), launch_stream);
 
@@ -1085,7 +1101,7 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
                                next_clean_meta.first, next_clean_meta.second,
                                num_tokens, hidden, num_max_dispatch_tokens_per_rank,
                                num_topk, num_experts, rank, num_ranks, num_sms, use_fp8,
-                               workspace, launch_stream, phases, grid_sync_counter);
+                               workspace, launch_stream, phases, grid_sync_counter, timing_array, num_timing_phases);
     };
     launcher(return_recv_hook ? LOW_LATENCY_SEND_PHASE : (LOW_LATENCY_SEND_PHASE | LOW_LATENCY_RECV_PHASE));
 
@@ -1103,6 +1119,21 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
     std::optional<std::function<void()>> recv_hook = std::nullopt;
     if (return_recv_hook)
         recv_hook = [=]() { launcher(LOW_LATENCY_RECV_PHASE); };
+
+#ifdef ENABLE_TIMING
+    cudaDeviceSynchronize();
+    std::vector<unsigned long long> host_dispatch_timing(num_timing_blocks * num_timing_phases, 0);
+    cudaMemcpy(host_dispatch_timing.data(), timing_array, num_timing_blocks * num_timing_phases * sizeof(unsigned long long), cudaMemcpyDeviceToHost);
+    if (torch::cuda::current_device() == 0) {
+        for (int i = 0; i < num_timing_blocks; ++i) {
+            for (int j = 0; j < num_timing_phases; ++j) {
+                printf("Dispatch: Rank: %d Block %d timings: Phase %d: %llu us\n", torch::cuda::current_device(), i, j, host_dispatch_timing[i * num_timing_phases + j]/345);
+            }
+        }
+    }
+    cudaFree(timing_array);
+    std::vector<unsigned long long>().swap(host_dispatch_timing);
+#endif
 
     // Return values
     return {packed_recv_x, packed_recv_x_scales, packed_recv_count, packed_recv_src_info, packed_recv_layout_range, event, recv_hook};
@@ -1162,6 +1193,19 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
         combined_x = torch::empty({num_combined_tokens, hidden}, x.options());
     }
 
+#ifdef ENABLE_TIMING
+    int num_timing_blocks = 1;
+    int num_timing_phases = 7;
+    unsigned long long* timing_array = nullptr;
+    cudaMalloc(&timing_array, num_timing_blocks * num_timing_phases * sizeof(unsigned long long));
+    cudaMemset(timing_array, 0, num_timing_blocks * num_timing_phases * sizeof(unsigned long long));
+    cudaDeviceSynchronize();
+#else
+    int num_timing_blocks = 1;
+    int num_timing_phases = -1;
+    unsigned long long* timing_array = nullptr;
+#endif
+
     // Set Concurrent Grid Sync Counter
     cudaMemsetAsync(grid_sync_counter, 0, sizeof(int), launch_stream);
 
@@ -1177,7 +1221,7 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
                               num_combined_tokens, hidden, num_max_dispatch_tokens_per_rank,
                               num_topk, num_experts, rank, num_ranks, num_sms, use_fp8,
                               workspace, launch_stream,
-                              phases, zero_copy, grid_sync_counter);
+                              phases, zero_copy, grid_sync_counter, timing_array, num_timing_phases);
     };
     launcher(return_recv_hook ? LOW_LATENCY_SEND_PHASE : (LOW_LATENCY_SEND_PHASE | LOW_LATENCY_RECV_PHASE));
 
@@ -1195,6 +1239,21 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
     std::optional<std::function<void()>> recv_hook = std::nullopt;
     if (return_recv_hook)
         recv_hook = [=]() { launcher(LOW_LATENCY_RECV_PHASE); };
+
+#ifdef ENABLE_TIMING
+    cudaDeviceSynchronize();
+    std::vector<unsigned long long> host_dispatch_timing(num_timing_blocks * num_timing_phases, 0);
+    cudaMemcpy(host_dispatch_timing.data(), timing_array, num_timing_blocks * num_timing_phases * sizeof(unsigned long long), cudaMemcpyDeviceToHost);
+    if (torch::cuda::current_device() == 0) {
+        for (int i = 0; i < num_timing_blocks; ++i) {
+            for (int j = 0; j < num_timing_phases; ++j) {
+                printf("Combine: Rank: %d Block %d timings: Phase %d: %llu us\n", torch::cuda::current_device(), i, j, host_dispatch_timing[i * num_timing_phases + j]/345);
+            }
+        }
+    }
+    cudaFree(timing_array);
+    std::vector<unsigned long long>().swap(host_dispatch_timing);
+#endif
 
     // Return values
     return {combined_x, event, recv_hook};
