@@ -103,6 +103,10 @@ Buffer::Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_
         packed_recv_count = torch::empty({num_local_experts}, torch::dtype(torch::kInt32).device(torch::kCUDA));
         combined_x = torch::empty({num_tokens.value(), hidden.value()}, torch::dtype(torch::kBFloat16).device(torch::kCUDA));
     }
+
+    // For Grid-level Sync
+    CUDA_CHECK(cudaMalloc(&grid_sync_counter, sizeof(int)));
+    cudaMemsetAsync(grid_sync_counter, 0, sizeof(int), comm_stream);
 }
 
 Buffer::~Buffer() noexcept(false) {
@@ -1101,7 +1105,7 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
                                next_clean_meta.first, next_clean_meta.second,
                                num_tokens, hidden, num_max_dispatch_tokens_per_rank,
                                num_topk, num_experts, rank, num_ranks, num_sms, use_fp8,
-                               workspace, launch_stream, phases);
+                               workspace, launch_stream, phases, grid_sync_counter);
     };
     launcher(return_recv_hook ? LOW_LATENCY_SEND_PHASE : (LOW_LATENCY_SEND_PHASE | LOW_LATENCY_RECV_PHASE));
 
@@ -1189,7 +1193,7 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
                               num_combined_tokens, hidden, num_max_dispatch_tokens_per_rank,
                               num_topk, num_experts, rank, num_ranks, num_sms,
                               workspace, launch_stream,
-                              phases, zero_copy);
+                              phases, zero_copy, grid_sync_counter);
     };
     launcher(return_recv_hook ? LOW_LATENCY_SEND_PHASE : (LOW_LATENCY_SEND_PHASE | LOW_LATENCY_RECV_PHASE));
 
