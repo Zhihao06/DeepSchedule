@@ -5,11 +5,11 @@
 #ifndef SETUP_LAUNCH_CONFIG
 #define SETUP_LAUNCH_CONFIG(num_sms, num_threads, stream) \
     cudaLaunchConfig_t cfg = {(num_sms), (num_threads), 0, stream, nullptr, 0}; \
-    cudaLaunchAttribute attr[1]; \
-    attr[0].id = cudaLaunchAttributeCooperative; \
-    attr[0].val.cooperative = 1; \
-    cfg.attrs = attr; \
-    cfg.numAttrs = 1
+    cudaLaunchAttribute attr; \
+    attr.id = cudaLaunchAttributeClusterDimension; \
+    attr.val.clusterDim = {1, 1, 1}; \
+    cfg.attrs = &attr; \
+    cfg.numAttrs = 1;
 #endif
 
 #ifndef LAUNCH_KERNEL
