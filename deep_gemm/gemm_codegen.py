@@ -120,6 +120,7 @@ def generate_kernel_template(num_tokens_l: List, hidden_l: List, intermediate_l:
         text += code_gemm_kernel
         text += gemm_cu_branch(*gemm_cu_config)
         file_name = "kernels/kernel.m_grouped_gemm_fp8_fp8_bf16_nt." + "_".join(map(str, gemm_cu_config)) + ".cu"
+        print("kernel.m_grouped_gemm_fp8_fp8_bf16_nt." + "_".join(map(str, gemm_cu_config)) + ".cu")
         with open(file_name, "w") as f:
             f.write(text)
 
