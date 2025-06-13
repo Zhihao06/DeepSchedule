@@ -76,6 +76,9 @@ private:
     torch::Tensor packed_recv_x, packed_recv_src_info, packed_recv_layout_range, packed_recv_count, combined_x;
     std::optional<torch::Tensor> packed_recv_x_scales;
 
+    // For Grid-level Sync
+    int* grid_sync_counter = nullptr;
+
 private:
     void move_fifo_slots(int num_slots = 1);
 

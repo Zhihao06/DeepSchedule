@@ -56,7 +56,7 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
          int* next_clean, int num_next_clean_int,
          int num_tokens, int num_max_dispatch_tokens_per_rank,
          int num_topk, int num_experts, int rank, int num_ranks,
-         int phases) {
+         int phases, int* grid_sync_counter) {
     const auto sm_id = static_cast<int>(blockIdx.x);
     const auto thread_id = static_cast<int>(threadIdx.x);
     const auto warp_id = thread_id / 32, lane_id = get_lane_id();
@@ -246,7 +246,13 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
 
     // For send-and-recv kernels, we need a grid sync for making `packed_recv_count` visible
     if (phases & LOW_LATENCY_SEND_PHASE)
-        cg::this_grid().sync();
+        // cg::this_grid().sync();
+        if (thread_id == 0) {
+            int arrived_sms = -1;
+            atomicAdd(grid_sync_counter, 1);
+            while((arrived_sms = ld_acquire_global(grid_sync_counter)) != num_sms);
+        }
+        __syncthreads();
 
     // Receiving and packing
     if (responsible_expert_idx < num_experts) {
@@ -317,7 +323,7 @@ void dispatch(void* packed_recv_x, float* packed_recv_x_scales,
               int* next_clean, int num_next_clean_int,
               int num_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
               int num_topk, int num_experts, int rank, int num_ranks, int num_sms, bool use_fp8,
-              void* workspace, cudaStream_t stream, int phases) {
+              void* workspace, cudaStream_t stream, int phases, int* grid_sync_counter) {
     const int kNumMaxTopK = 9;
     const int kNumWarpGroups = get_kNumWarpGroups(num_experts, num_sms);
     const int kNumWarpsPerGroup = get_kNumWarpsPerGroup(kNumWarpGroups);
@@ -345,7 +351,7 @@ LAUNCH_KERNEL(&cfg, dispatch_func, \
               atomic_counter_per_expert, atomic_finish_counter_per_expert, \
               next_clean, num_next_clean_int, \
               num_tokens, num_max_dispatch_tokens_per_rank, \
-              num_topk, num_experts, rank, num_ranks, phases); } break
+              num_topk, num_experts, rank, num_ranks, phases, grid_sync_counter); } break
 
     #define SMS_CASE_MACRO(hidden_const, num_sms_const) SWITCH_EXPERTS(hidden_const, num_sms_const, DISPATCH_LAUNCH_CASE)
     #define HIDDEN_CASE_MACRO(hidden_const) SWITCH_SMS(hidden_const, SMS_CASE_MACRO)
@@ -366,7 +372,7 @@ combine(void* combined_x,
         int num_combined_tokens, int hidden, int num_topk,
         int num_max_dispatch_tokens_per_rank,
         int num_experts, int rank, int num_ranks,
-        int phases, bool zero_copy) {
+        int phases, bool zero_copy, int* grid_sync_counter) {
     const auto sm_id = static_cast<int>(blockIdx.x);
     const auto num_sms = static_cast<int>(gridDim.x);
     const auto thread_id = static_cast<int>(threadIdx.x);
@@ -464,7 +470,13 @@ combine(void* combined_x,
         if (sub_warp_id == 0 and lane_id == 0)
             while (ld_acquire_sys_global(rdma_recv_flag + responsible_expert_idx) == 0);
     }
-    cg::this_grid().sync();
+    // cg::this_grid().sync();
+    int arrived_sms = -1;
+    if (thread_id == 0) {
+        atomicAdd(grid_sync_counter, -1);
+        while((arrived_sms = ld_acquire_global(grid_sync_counter)) != 0);
+    }
+    __syncthreads();
 
     // Reduce tokens with FP8 cast
     EP_DEVICE_ASSERT(num_topk <= 32 and hidden_bf16_int4 <= num_threads);
@@ -514,7 +526,7 @@ void combine(void* combined_x,
              int num_combined_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
              int num_topk, int num_experts, int rank, int num_ranks, int num_sms,
              void* workspace, cudaStream_t stream,
-             int phases, bool zero_copy) {
+             int phases, bool zero_copy, int* grid_sync_counter) {
     const int kNumMaxTopk = 9;
     const int kNumWarpGroups = get_kNumWarpGroups(num_experts, num_sms);
     const int kNumWarpsPerGroup = get_kNumWarpsPerGroup(kNumWarpGroups);
@@ -539,7 +551,7 @@ LAUNCH_KERNEL(&cfg, combine_func, \
               num_combined_tokens, hidden, num_topk, \
               num_max_dispatch_tokens_per_rank, \
               num_experts, rank, num_ranks, \
-              phases, zero_copy); } break
+              phases, zero_copy, grid_sync_counter); } break
 
     #define SMS_CASE_MACRO(hidden_const, num_sms_const) SWITCH_EXPERTS(hidden_const, num_sms_const, COMBINE_LAUNCH_CASE)
     #define HIDDEN_CASE_MACRO(hidden_const) SWITCH_SMS(hidden_const, SMS_CASE_MACRO)
