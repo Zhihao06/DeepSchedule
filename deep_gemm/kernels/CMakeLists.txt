@@ -66,6 +66,14 @@ include_directories("../include" ${CUDA_TOOLKIT_ROOT_DIR}/include ${TORCH_INCLUD
 
 file(GLOB CU_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cu")
 
+# debug时可以根据gemm_code_gen.py生成内容可以只编译一些cu文件来加快编译速度
+# set(CU_FILES
+#     kernel.m_grouped_gemm_fp8_fp8_bf16_nt.3072_4096_64_160_128_0_64_32_4_1_True_136512.cu
+#     kernel.m_grouped_gemm_fp8_fp8_bf16_nt.4096_1536_64_160_128_0_64_16_4_1_True_136352.cu
+#     kernel.m_grouped_gemm_fp8_fp8_bf16_nt.3072_4096_64_160_128_0_64_16_4_1_True_136512.cu
+#     kernel.m_grouped_gemm_fp8_fp8_bf16_nt.4096_1536_64_160_128_0_64_32_4_1_True_136352.cu
+# )
+
 # 静态链接
 add_library(all_kernels_obj OBJECT ${CU_FILES})
 target_link_libraries(all_kernels_obj PRIVATE
