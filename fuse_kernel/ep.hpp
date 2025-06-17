@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ATen/cuda/CUDAContext.h>
+#include <ATen/cuda/CUDADataType.h>
 #include <torch/torch.h>
 #include <torch/csrc/distributed/c10d/ProcessGroupNCCL.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
@@ -14,6 +16,7 @@
 #include "tools/utils.hpp"
 #include "tools/debug.hpp"
 #include "tools/config.hpp"
+#include "tools/ep_moe_fwd.hpp"
 
 using namespace deep_ep;
 using namespace c10d;
@@ -100,199 +103,24 @@ void get_deepep_low_latency_buffer(uint64_t num_max_dispatch_tokens_per_rank, ui
     assert(buffer->is_available());
 }
 
-void ep_moe_overlap_(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens,
-    uint64_t num_topk, uint64_t world_size, uint64_t num_groups, uint64_t expected_m, uint64_t m_max, cudaStream_t current_stream, 
-    std::shared_ptr<Buffer>& buffer, 
-    torch::Tensor hidden_states,
-    torch::Tensor topk_ids,
-    torch::Tensor topk_weights,
-    std::tuple<torch::Tensor, torch::Tensor> x_fp8,
-    std::tuple<torch::Tensor, torch::Tensor> y_fp8,
-    torch::Tensor out,
-    std::tuple<torch::Tensor, torch::Tensor> x_fp8_2,
-    std::tuple<torch::Tensor, torch::Tensor> y_fp8_2,
-    torch::Tensor out_2,
-    std::shared_ptr<FUSEConfig>& fuse_config,
-    bool enable_profile) {
-        if (enable_profile) cudaProfilerStart();
-        global_pg->barrier()->wait();
-        torch::Tensor packed_recv_count_2 = torch::bincount(topk_ids.view(num_tokens * num_topk), {}, num_experts).to(torch::kCUDA) * world_size;
-        packed_recv_count_2 = packed_recv_count_2.index({torch::indexing::Slice(global_pg->getRank() * num_groups, (global_pg->getRank() + 1) * num_groups)});
-        cudaDeviceSynchronize();
-        
-        auto [
-            packed_recv_x, 
-            packed_recv_x_scales, 
-            packed_recv_count, 
-            packed_recv_src_info, 
-            packed_recv_layout_range, 
-            event, 
-            hook
-        ] = buffer->low_latency_dispatch(hidden_states, topk_ids, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*async_finish*/, false/*return_recv_hook*/);
-        get_function_for_gemm(num_tokens, khidden, hidden_size, num_groups, fuse_config->gemm_sms)(
-            std::get<0>(x_fp8).data_ptr(), std::get<1>(x_fp8).data_ptr(),
-            std::get<0>(y_fp8).data_ptr(), std::get<1>(y_fp8).data_ptr(),
-            out.data_ptr(),
-            packed_recv_count_2.data_ptr(),
-            expected_m,
-            current_stream,
-            fuse_config->gemm_sms
-        );
-        cudaDeviceSynchronize();
-
-        auto handle = std::make_tuple(packed_recv_src_info, packed_recv_layout_range, num_max_dispatch_tokens_per_rank, hidden_states.size(1), num_experts);
-        torch::Tensor out_2_comm = torch::randn(packed_recv_x.sizes(), dtype(torch::kBFloat16).device(torch::kCUDA));
-        auto [
-            src_info, 
-            layout_range, 
-            num_max_dispatch_tokens_per_rank_, 
-            hidden, 
-            num_experts_
-        ] = handle;
-        cudaDeviceSynchronize();
-
-        get_function_for_gemm(num_tokens, hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
-            std::get<0>(x_fp8_2).data_ptr(), std::get<1>(x_fp8_2).data_ptr(),
-            std::get<0>(y_fp8_2).data_ptr(), std::get<1>(y_fp8_2).data_ptr(),
-            out_2.data_ptr(),
-            packed_recv_count.data_ptr(),
-            expected_m,
-            current_stream,
-            fuse_config->gemm_sms
-        );
-        auto [
-            combine_x,
-            event_,
-            hook_
-        ] = buffer->low_latency_combine(out_2_comm, topk_ids, topk_weights, src_info, layout_range, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, true/*async_finish*/, false/*return_recv_hook*/, std::nullopt/*out: inplace tensor*/);
-
-        if (enable_profile) cudaProfilerStop();
-        cudaDeviceSynchronize();
-}
-
-void ep_moe_core_(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens,
-    uint64_t num_topk, uint64_t world_size, uint64_t num_groups, uint64_t expected_m, uint64_t m_max, cudaStream_t current_stream, 
-    std::shared_ptr<Buffer>& buffer, 
-    torch::Tensor hidden_states,
-    torch::Tensor topk_ids,
-    torch::Tensor topk_weights,
-    std::tuple<torch::Tensor, torch::Tensor> x_fp8,
-    std::tuple<torch::Tensor, torch::Tensor> y_fp8,
-    torch::Tensor out,
-    std::tuple<torch::Tensor, torch::Tensor> x_fp8_2,
-    std::tuple<torch::Tensor, torch::Tensor> y_fp8_2,
-    torch::Tensor out_2,
-    std::shared_ptr<FUSEConfig>& fuse_config,
-    bool enable_profile) {
-        if (enable_profile) cudaProfilerStart();
-        global_pg->barrier()->wait();
-        auto [
-            packed_recv_x, 
-            packed_recv_x_scales, 
-            packed_recv_count, 
-            packed_recv_src_info, 
-            packed_recv_layout_range, 
-            event, 
-            hook
-        ] = buffer->low_latency_dispatch(hidden_states, topk_ids, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*async_finish*/, false/*return_recv_hook*/);
-        auto handle = std::make_tuple(packed_recv_src_info, packed_recv_layout_range, num_max_dispatch_tokens_per_rank, hidden_states.size(1), num_experts);
-        cudaDeviceSynchronize();
-        get_function_for_gemm(num_tokens, khidden, hidden_size, num_groups, fuse_config->gemm_sms)(
-            std::get<0>(x_fp8).data_ptr(), std::get<1>(x_fp8).data_ptr(),
-            std::get<0>(y_fp8).data_ptr(), std::get<1>(y_fp8).data_ptr(),
-            out.data_ptr(),
-            packed_recv_count.data_ptr(),
-            expected_m,
-            current_stream,
-            fuse_config->gemm_sms
-        );
-        get_function_for_gemm(num_tokens, hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
-            std::get<0>(x_fp8_2).data_ptr(), std::get<1>(x_fp8_2).data_ptr(),
-            std::get<0>(y_fp8_2).data_ptr(), std::get<1>(y_fp8_2).data_ptr(),
-            out_2.data_ptr(),
-            packed_recv_count.data_ptr(),
-            expected_m,
-            current_stream,
-            fuse_config->gemm_sms
-        );
-        cudaDeviceSynchronize();
-        auto [
-            src_info, 
-            layout_range, 
-            num_max_dispatch_tokens_per_rank_, 
-            hidden, 
-            num_experts_
-        ] = handle;
-        auto [
-            combine_x,
-            event_,
-            hook_
-        ] = buffer->low_latency_combine(out_2.view(packed_recv_x.sizes()), topk_ids, topk_weights, src_info, layout_range, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, std::nullopt/*out: inplace tensor*/);
-        if (enable_profile) cudaProfilerStop();
-        cudaDeviceSynchronize();
-}
-
-void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, uint64_t num_topk, uint64_t world_size, bool enable_overlap) {
-    auto num_groups = num_experts / world_size;
-    auto expected_m = std::max(1UL, (num_tokens * num_topk + num_experts - 1) / num_experts * 2);
-    auto m_max = num_max_dispatch_tokens_per_rank * world_size;
-
-    cudaStream_t current_stream;
-    CUDA_CHECK(cudaStreamCreateWithFlags(&current_stream, cudaStreamNonBlocking));
+void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, uint64_t num_topk, uint64_t world_size, ModeType mode) {
     global_pg->barrier()->wait();
-    std::shared_ptr<Buffer> buffer;
+    std::shared_ptr<Buffer> buffer, buffer_b;
+    uint64_t num_groups = num_experts / world_size;
+    std::vector<int> ep_sms = {24};
+    int repeat_times = 10;
+
     get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffer,
         true/*use_cuda_graph*/, true/*use_fp8*/, num_experts, 
         num_tokens);
-    auto [
-        hidden_states,
-        topk_ids,
-        topk_weights,
-        x_fp8,
-        y_fp8,
-        out,
-        x_fp8_2,
-        y_fp8_2,
-        out_2
-    ] = initialize_random_inputs(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
 
-    for (auto ep_sms = 16; ep_sms <= 73; ep_sms += 4) {
-        std::shared_ptr<FUSEConfig> fuse_config = std::make_shared<FUSEConfig>(78-ep_sms, ep_sms);
-        for (auto i=0; i<10; i++) {
-            if (enable_overlap) {
-                ep_moe_overlap_(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens,
-                    num_topk, world_size, num_groups, expected_m, m_max, current_stream, 
-                    buffer, 
-                    hidden_states,
-                    topk_ids,
-                    topk_weights,
-                    x_fp8,
-                    y_fp8,
-                    out,
-                    x_fp8_2,
-                    y_fp8_2,
-                    out_2,
-                    fuse_config,
-                    false
-                );
-            } else {
-                ep_moe_core_(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens,
-                    num_topk, world_size, num_groups, expected_m, m_max, current_stream, 
-                    buffer, 
-                    hidden_states,
-                    topk_ids,
-                    topk_weights,
-                    x_fp8,
-                    y_fp8,
-                    out,
-                    x_fp8_2,
-                    y_fp8_2,
-                    out_2,
-                    fuse_config,
-                    false
-                );
-            }
-        }
+    EPMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
+        global_pg->getSize(), global_pg, buffer, buffer_b, false/*enable_tbo*/);
+
+    if (mode == ModeType::NORMAL) moe.ep_moe_core(ep_sms, repeat_times, false/*enable_profile*/);
+    else if (mode == ModeType::OVERLAP) moe.ep_moe_overlap(ep_sms, repeat_times, false/*enable_profile*/);
+    else {
+        throw std::runtime_error("Not supported mode");
     }
 
     // // Prepare Cuda Graph
