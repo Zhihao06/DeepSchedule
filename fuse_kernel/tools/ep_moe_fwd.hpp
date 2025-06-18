@@ -125,7 +125,7 @@ private:
         cudaStream_t current_stream = at::cuda::getCurrentCUDAStream();
         assert(buffer_b != nullptr and hidden_states_b.defined());
         global_pg->barrier()->wait();
-        
+
         // Dispatch 0 issue
         auto [
             packed_recv_x, 
@@ -163,7 +163,7 @@ private:
         );
 
         // 0: FC2
-        get_function_for_gemm(num_tokens, khidden, hidden_size, num_groups, fuse_config->gemm_sms)(
+        get_function_for_gemm(num_tokens, hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
             std::get<0>(x_fp8_2).data_ptr(), std::get<1>(x_fp8_2).data_ptr(),
             std::get<0>(y_fp8_2).data_ptr(), std::get<1>(y_fp8_2).data_ptr(),
             out_2.data_ptr(),
@@ -195,7 +195,7 @@ private:
         );
 
         // 1: FC2
-        get_function_for_gemm(num_tokens, khidden, hidden_size, num_groups, fuse_config->gemm_sms)(
+        get_function_for_gemm(num_tokens, hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
             std::get<0>(x_fp8_2_b).data_ptr(), std::get<1>(x_fp8_2_b).data_ptr(),
             std::get<0>(y_fp8_2_b).data_ptr(), std::get<1>(y_fp8_2_b).data_ptr(),
             out_2_b.data_ptr(),
