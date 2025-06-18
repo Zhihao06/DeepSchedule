@@ -473,8 +473,8 @@ combine(void* combined_x,
     // cg::this_grid().sync();
     int arrived_sms = -1;
     if (thread_id == 0) {
-        atomicAdd(grid_sync_counter, -1);
-        while((arrived_sms = ld_acquire_global(grid_sync_counter)) != 0);
+        atomicAdd(grid_sync_counter, 1);
+        while((arrived_sms = ld_acquire_global(grid_sync_counter)) != num_sms);
     }
     __syncthreads();
 
