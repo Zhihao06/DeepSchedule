@@ -1093,6 +1093,9 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
         packed_recv_x_scales_ptr = packed_recv_x_scales->data_ptr<float>();
     }
 
+    // Set Concurrent Grid Sync Counter
+    cudaMemsetAsync(grid_sync_counter, 0, sizeof(int), comm_stream);
+
     // Kernel launch
     auto next_clean_meta = next_buffer.clean_meta();
     auto launcher = [=](int phases) {
@@ -1180,6 +1183,9 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
     } else {
         if (!use_cuda_graph) combined_x = torch::empty({num_combined_tokens, hidden}, x.options());
     }
+
+    // Set Concurrent Grid Sync Counter
+    cudaMemsetAsync(grid_sync_counter, 0, sizeof(int), comm_stream);
 
     // Kernel launch
     auto next_clean_meta = next_buffer.clean_meta();
