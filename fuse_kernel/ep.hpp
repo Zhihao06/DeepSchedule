@@ -113,12 +113,18 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
     get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffer,
         true/*use_cuda_graph*/, true/*use_fp8*/, num_experts, 
         num_tokens);
+    if (mode == ModeType::TBO) {
+        get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffer_b,
+            true/*use_cuda_graph*/, true/*use_fp8*/, num_experts, 
+            num_tokens);
+    }
 
     EPMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
-        global_pg->getSize(), global_pg, buffer, buffer_b, false/*enable_tbo*/);
+        global_pg->getSize(), global_pg, buffer, buffer_b, mode);
 
     if (mode == ModeType::NORMAL) moe.ep_moe_core(ep_sms, repeat_times, false/*enable_profile*/);
     else if (mode == ModeType::OVERLAP) moe.ep_moe_overlap(ep_sms, repeat_times, false/*enable_profile*/);
+    else if (mode == ModeType::TBO) moe.ep_moe_tbo(ep_sms, repeat_times, false/*enable_profile*/);
     else {
         throw std::runtime_error("Not supported mode");
     }
