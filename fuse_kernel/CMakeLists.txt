@@ -77,6 +77,9 @@ target_link_directories(fuse_app PUBLIC ../deep_gemm/kernels/build)
 target_link_libraries(fuse_app PUBLIC CUDA::cudart nvshmem cudadevrt mlx5 ${PYTHON_LIBRARIES} ${TORCH_LIBRARIES})
 target_link_libraries(fuse_app PUBLIC deep_ep) # deep_gemm
 
+add_subdirectory(src/ops)
+target_link_libraries(fuse_app PUBLIC fuse_silu_and_mul)
+
 # 静态链接
 target_link_libraries(fuse_app PUBLIC deep_gemm_kernels)
 
