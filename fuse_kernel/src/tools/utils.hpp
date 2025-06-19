@@ -50,13 +50,6 @@ void checkCudaMemoryUsage(const std::string& tag = "") {
     std::cout << std::endl;
 }
 
-// run mode
-enum ModeType {
-    NORMAL,
-    OVERLAP,
-    TBO
-};
-
 // tensor traverse
 template <typename T>
 torch::Tensor to_tensor(const T& value, const torch::TensorOptions& options) {

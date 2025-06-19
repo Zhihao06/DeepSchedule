@@ -11,12 +11,12 @@
 
 #include "deep_ep.hpp"
 #include "config.hpp"
-#include "tools/gemm_gen.hpp"
-#include "tools/data.hpp"
-#include "tools/utils.hpp"
-#include "tools/debug.hpp"
-#include "tools/config.hpp"
-#include "tools/ep_moe_fwd.hpp"
+#include "src/tools/data.hpp"
+#include "src/tools/utils.hpp"
+#include "src/tools/debug.hpp"
+#include "src/tools/config.hpp"
+#include "src/gemm_gen.hpp"
+#include "src/ep_moe_fwd.hpp"
 
 using namespace deep_ep;
 using namespace c10d;
