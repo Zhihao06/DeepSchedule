@@ -4,7 +4,7 @@
 #include <cuda_profiler_api.h>
 #include <iostream>
 #include "ep.hpp"
-#include "tools/utils.hpp"
+#include "src/tools/config.hpp"
 
 void process_args(int argc, char** argv, ModeType& mode, bool& enable_traverse) {
     if (argc <= 1) {

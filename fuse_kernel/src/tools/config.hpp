@@ -1,3 +1,5 @@
+#pragma once
+
 #define LAUNCH_GEMM(n, k) launch_gemm_m4_n##n##_k##k##_group16_sm78
 
 struct FUSEConfig {
@@ -6,4 +8,11 @@ struct FUSEConfig {
 
     FUSEConfig(int gemm_sms, int ep_sms): 
         gemm_sms(gemm_sms), ep_sms(ep_sms) {};
+};
+
+// run mode
+enum ModeType {
+    NORMAL,
+    OVERLAP,
+    TBO
 };
