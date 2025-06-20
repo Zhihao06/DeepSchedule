@@ -164,6 +164,7 @@ construct_masked_grouped(int64_t num_groups, int64_t m, int64_t k, int64_t n) {
 */
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor,
            std::tuple<torch::Tensor, torch::Tensor>, std::tuple<torch::Tensor, torch::Tensor>, torch::Tensor,
+           torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
            std::tuple<torch::Tensor, torch::Tensor>, std::tuple<torch::Tensor, torch::Tensor>, torch::Tensor>
 initialize_random_inputs(int64_t num_tokens, int64_t num_topk, int64_t num_groups, int64_t num_experts,
                       int64_t m_max, int64_t hidden_size, int64_t khidden) {
@@ -184,16 +185,25 @@ initialize_random_inputs(int64_t num_tokens, int64_t num_topk, int64_t num_group
     auto y_fp8 = std::get<1>(result1);
     auto out = std::get<2>(result1);
 
-    // 5. Second call to construct_masked_grouped
+    // 5. silu_and_mul_masked inputs
+    auto o_vec = torch::randn({num_groups, m_max, khidden / 2}, torch::kCUDA).to(torch::kFloat8_e4m3fn);
+    auto o_scales = torch::randn({num_groups, std::max(static_cast<int64_t>(1), khidden / 256), m_max}, dtype(torch::kFloat32).device(torch::kCUDA));
+    std::vector<int64_t> stride_0 = {num_groups, m_max, std::max(static_cast<int64_t>(1), khidden / 256)};
+    std::vector<int64_t> stride_1 = {m_max * std::max(static_cast<int64_t>(1), khidden / 256), static_cast<int64_t>(1), m_max};
+    auto o_scales_strided = torch::as_strided(o_scales, stride_0, stride_1);
+    auto silu_out = torch::empty({0}, dtype(torch::kBFloat16).device(torch::kCUDA));
+
+    // 6. Second call to construct_masked_grouped
     auto result2 = construct_masked_grouped(num_groups, m_max, khidden / 2, hidden_size);
     auto x_fp8_2 = std::get<0>(result2);
     auto y_fp8_2 = std::get<1>(result2);
     auto out_2 = std::get<2>(result2);
 
-    // 6. Return all tensors as a tuple
+    // 7. Return all tensors as a tuple
     return std::make_tuple(
         hidden_states, topk_ids, topk_weights,
         x_fp8, y_fp8, out,
+        o_vec, o_scales, o_scales_strided, silu_out,
         x_fp8_2, y_fp8_2, out_2
     );
 }

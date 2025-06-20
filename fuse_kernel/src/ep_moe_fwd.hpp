@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ops/common.h"
+
 using namespace deep_ep;
 using namespace c10d;
 
@@ -25,8 +27,6 @@ private:
             event, 
             hook
         ] = buffer->low_latency_dispatch(hidden_states, topk_ids, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*async_finish*/, false/*return_recv_hook*/);
-        auto handle = std::make_tuple(packed_recv_src_info, packed_recv_layout_range, num_max_dispatch_tokens_per_rank, hidden_states.size(1), num_experts);
-        cudaDeviceSynchronize();
         get_function_for_gemm(num_tokens, khidden, hidden_size, num_groups, fuse_config->gemm_sms)(
             std::get<0>(x_fp8).data_ptr(), std::get<1>(x_fp8).data_ptr(),
             std::get<0>(y_fp8).data_ptr(), std::get<1>(y_fp8).data_ptr(),
@@ -36,8 +36,11 @@ private:
             current_stream,
             fuse_config->gemm_sms
         );
+        auto out_size = static_cast<int64_t>(num_groups * m_max);
+        auto out_view = out.view({out_size, -1});
+        fuse_silu_and_mul_masked(silu_out, o_vec, o_scales, out_view, packed_recv_count, m_max);
         get_function_for_gemm(num_tokens, hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
-            std::get<0>(x_fp8_2).data_ptr(), std::get<1>(x_fp8_2).data_ptr(),
+            o_vec.data_ptr(), o_scales_strided.data_ptr(),
             std::get<0>(y_fp8_2).data_ptr(), std::get<1>(y_fp8_2).data_ptr(),
             out_2.data_ptr(),
             packed_recv_count.data_ptr(),
@@ -45,19 +48,11 @@ private:
             current_stream,
             fuse_config->gemm_sms
         );
-        cudaDeviceSynchronize();
-        auto [
-            src_info, 
-            layout_range, 
-            num_max_dispatch_tokens_per_rank_, 
-            hidden, 
-            num_experts_
-        ] = handle;
         auto [
             combine_x,
             event_,
             hook_
-        ] = buffer->low_latency_combine(out_2.view(packed_recv_x.sizes()), topk_ids, topk_weights, src_info, layout_range, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, std::nullopt/*out: inplace tensor*/);
+        ] = buffer->low_latency_combine(out_2.view(packed_recv_x.sizes()), topk_ids, topk_weights, packed_recv_src_info, packed_recv_layout_range, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, std::nullopt/*out: inplace tensor*/);
         if (enable_profile) cudaProfilerStop();
         cudaDeviceSynchronize();
     }
@@ -162,9 +157,14 @@ private:
             fuse_config->gemm_sms
         );
 
+        // 0: silu
+        auto out_size = static_cast<int64_t>(num_groups * m_max);
+        auto out_view = out.view({out_size, -1});
+        fuse_silu_and_mul_masked(silu_out, o_vec, o_scales, out_view, packed_recv_count, m_max);
+
         // 0: FC2
         get_function_for_gemm(num_tokens, hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
-            std::get<0>(x_fp8_2).data_ptr(), std::get<1>(x_fp8_2).data_ptr(),
+            o_vec.data_ptr(), o_scales_strided.data_ptr(),
             std::get<0>(y_fp8_2).data_ptr(), std::get<1>(y_fp8_2).data_ptr(),
             out_2.data_ptr(),
             packed_recv_count.data_ptr(),
@@ -194,9 +194,14 @@ private:
             fuse_config->gemm_sms
         );
 
+        // 1: silu
+        auto out_size_b = static_cast<int64_t>(num_groups * m_max);
+        auto out_view_b = out_b.view({out_size_b, -1});
+        fuse_silu_and_mul_masked(silu_out_b, o_vec_b, o_scales_b, out_view_b, packed_recv_count_b, m_max);
+
         // 1: FC2
         get_function_for_gemm(num_tokens, hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
-            std::get<0>(x_fp8_2_b).data_ptr(), std::get<1>(x_fp8_2_b).data_ptr(),
+            o_vec_b.data_ptr(), o_scales_strided_b.data_ptr(),
             std::get<0>(y_fp8_2_b).data_ptr(), std::get<1>(y_fp8_2_b).data_ptr(),
             out_2_b.data_ptr(),
             packed_recv_count_b.data_ptr(),
@@ -225,12 +230,14 @@ private:
 public:
     torch::Tensor hidden_states, topk_ids, topk_weights;
     std::tuple<torch::Tensor, torch::Tensor> x_fp8, y_fp8;
+    torch::Tensor o_vec, o_scales, o_scales_strided, silu_out;
     std::tuple<torch::Tensor, torch::Tensor> x_fp8_2, y_fp8_2;
     torch::Tensor out, out_2;
 
     // For TBO
     torch::Tensor hidden_states_b, topk_ids_b, topk_weights_b;
     std::tuple<torch::Tensor, torch::Tensor> x_fp8_b, y_fp8_b;
+    torch::Tensor o_vec_b, o_scales_b, o_scales_strided_b, silu_out_b;
     std::tuple<torch::Tensor, torch::Tensor> x_fp8_2_b, y_fp8_2_b;
     torch::Tensor out_b, out_2_b;
 
@@ -243,9 +250,9 @@ public:
         num_groups = num_experts / world_size;
         expected_m = std::max(1UL, (num_tokens * num_topk + num_experts - 1) / num_experts * 2);
         m_max = num_max_dispatch_tokens_per_rank * world_size;
-        std::tie(hidden_states, topk_ids, topk_weights, x_fp8, y_fp8, out, x_fp8_2, y_fp8_2, out_2) = initialize_random_inputs(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
+        std::tie(hidden_states, topk_ids, topk_weights, x_fp8, y_fp8, out, o_vec, o_scales, o_scales_strided, silu_out, x_fp8_2, y_fp8_2, out_2) = initialize_random_inputs(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
         if (mode == ModeType::TBO) { 
-            std::tie(hidden_states_b, topk_ids_b, topk_weights_b, x_fp8_b, y_fp8_b, out_b, x_fp8_2_b, y_fp8_2_b, out_2_b) = initialize_random_inputs(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
+            std::tie(hidden_states_b, topk_ids_b, topk_weights_b, x_fp8_b, y_fp8_b, out_b, o_vec_b, o_scales_b, o_scales_strided_b, silu_out_b, x_fp8_2_b, y_fp8_2_b, out_2_b) = initialize_random_inputs(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
         }
     }
 
