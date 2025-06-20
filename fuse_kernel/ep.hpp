@@ -18,6 +18,11 @@
 #include "src/gemm_gen.hpp"
 #include "src/ep_moe_fwd.hpp"
 
+#include "src/moe/base_moe.hpp"
+#include "src/moe/sequence_moe.hpp"
+#include "src/moe/overlap_moe.hpp"
+#include "src/moe/tbo_moe.hpp"
+
 using namespace deep_ep;
 using namespace c10d;
 
@@ -49,13 +54,19 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
     std::vector<int> ep_sms = {24};
     int repeat_times = 10;
 
-    EPMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
-        global_pg->getSize(), global_pg, mode);
-
-    if (mode == ModeType::NORMAL) moe.ep_moe_core(ep_sms, repeat_times, false/*enable_profile*/);
-    else if (mode == ModeType::OVERLAP) moe.ep_moe_overlap(ep_sms, repeat_times, false/*enable_profile*/);
-    else if (mode == ModeType::TBO) moe.ep_moe_tbo(ep_sms, repeat_times, false/*enable_profile*/);
-    else {
+    if (mode == ModeType::NORMAL) {
+        SequenceMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
+            global_pg->getSize(), global_pg);
+        moe.run(ep_sms, repeat_times, false/*enable_profile*/);
+    } else if (mode == ModeType::OVERLAP) {
+        OverlapMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
+            global_pg->getSize(), global_pg);
+        moe.run(ep_sms, repeat_times, false/*enable_profile*/);
+    } else if (mode == ModeType::TBO) {
+        TBOMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
+            global_pg->getSize(), global_pg);
+        moe.run(ep_sms, repeat_times, false/*enable_profile*/);
+    } else {
         throw std::runtime_error("Not supported mode");
     }
 
