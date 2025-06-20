@@ -157,9 +157,14 @@ private:
             fuse_config->gemm_sms
         );
 
+        // 0: silu
+        auto out_size = static_cast<int64_t>(num_groups * m_max);
+        auto out_view = out.view({out_size, -1});
+        fuse_silu_and_mul_masked(silu_out, o_vec, o_scales, out_view, packed_recv_count, m_max);
+
         // 0: FC2
         get_function_for_gemm(num_tokens, hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
-            std::get<0>(x_fp8_2).data_ptr(), std::get<1>(x_fp8_2).data_ptr(),
+            o_vec.data_ptr(), o_scales_strided.data_ptr(),
             std::get<0>(y_fp8_2).data_ptr(), std::get<1>(y_fp8_2).data_ptr(),
             out_2.data_ptr(),
             packed_recv_count.data_ptr(),
@@ -189,9 +194,14 @@ private:
             fuse_config->gemm_sms
         );
 
+        // 1: silu
+        auto out_size_b = static_cast<int64_t>(num_groups * m_max);
+        auto out_view_b = out_b.view({out_size_b, -1});
+        fuse_silu_and_mul_masked(silu_out_b, o_vec_b, o_scales_b, out_view_b, packed_recv_count_b, m_max);
+
         // 1: FC2
         get_function_for_gemm(num_tokens, hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
-            std::get<0>(x_fp8_2_b).data_ptr(), std::get<1>(x_fp8_2_b).data_ptr(),
+            o_vec_b.data_ptr(), o_scales_strided_b.data_ptr(),
             std::get<0>(y_fp8_2_b).data_ptr(), std::get<1>(y_fp8_2_b).data_ptr(),
             out_2_b.data_ptr(),
             packed_recv_count_b.data_ptr(),
