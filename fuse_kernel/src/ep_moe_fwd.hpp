@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ops/common.h"
+#include "tools/buffer.hpp"
 
 using namespace deep_ep;
 using namespace c10d;
@@ -242,17 +243,23 @@ public:
     torch::Tensor out_b, out_2_b;
 
     EPMoE(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, 
-        uint64_t num_topk, uint64_t world_size, std::shared_ptr<ProcessGroupNCCL>& global_pg, std::shared_ptr<Buffer>& buffer, std::shared_ptr<Buffer>& buffer_b,
-        ModeType mode):
+        uint64_t num_topk, uint64_t world_size, std::shared_ptr<ProcessGroupNCCL>& global_pg, ModeType mode):
         num_experts(num_experts), num_max_dispatch_tokens_per_rank(num_max_dispatch_tokens_per_rank), 
         khidden(khidden), hidden_size(hidden_size), num_tokens(num_tokens), num_topk(num_topk), 
-        world_size(world_size), global_pg(global_pg), buffer(buffer), buffer_b(buffer_b) {
+        world_size(world_size), global_pg(global_pg) {
         num_groups = num_experts / world_size;
         expected_m = std::max(1UL, (num_tokens * num_topk + num_experts - 1) / num_experts * 2);
         m_max = num_max_dispatch_tokens_per_rank * world_size;
         std::tie(hidden_states, topk_ids, topk_weights, x_fp8, y_fp8, out, o_vec, o_scales, o_scales_strided, silu_out, x_fp8_2, y_fp8_2, out_2) = initialize_random_inputs(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
         if (mode == ModeType::TBO) { 
             std::tie(hidden_states_b, topk_ids_b, topk_weights_b, x_fp8_b, y_fp8_b, out_b, o_vec_b, o_scales_b, o_scales_strided_b, silu_out_b, x_fp8_2_b, y_fp8_2_b, out_2_b) = initialize_random_inputs(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
+        }
+
+        get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffer,
+            true/*use_cuda_graph*/, true/*use_fp8*/, num_experts, num_tokens);
+        if (mode == ModeType::TBO) {
+            get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffer_b,
+                true/*use_cuda_graph*/, true/*use_fp8*/, num_experts, num_tokens);
         }
     }
 
