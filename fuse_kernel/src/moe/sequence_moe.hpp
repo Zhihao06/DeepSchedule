@@ -7,7 +7,7 @@ using namespace c10d;
 
 class SequenceMoE : public BaseMoE {
 protected:
-    void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, bool enable_profile) override {
+    void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, bool enable_profile) {
         cudaStream_t current_stream = at::cuda::getCurrentCUDAStream();
         if (enable_profile) cudaProfilerStart();
         global_pg->barrier()->wait();

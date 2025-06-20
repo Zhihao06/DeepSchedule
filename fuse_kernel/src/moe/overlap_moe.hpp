@@ -7,7 +7,7 @@ using namespace c10d;
 
 class OverlapMoE : public BaseMoE {
 protected:
-    void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, bool enable_profile) override {
+    void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, bool enable_profile) {
         cudaStream_t current_stream = at::cuda::getCurrentCUDAStream();
         CUDA_CHECK(cudaStreamCreateWithFlags(&current_stream, cudaStreamNonBlocking));
         if (enable_profile) cudaProfilerStart();
