@@ -186,7 +186,7 @@ initialize_random_inputs(int64_t num_tokens, int64_t num_topk, int64_t num_group
     auto out = std::get<2>(result1);
 
     // 5. silu_and_mul_masked inputs
-    auto o_vec = torch::randn({num_groups, m_max, khidden / 2}, dtype(torch::kFloat8_e4m3fn).device(torch::kCUDA));
+    auto o_vec = torch::randn({num_groups, m_max, khidden / 2}, torch::kCUDA).to(torch::kFloat8_e4m3fn);
     auto o_scales = torch::randn({num_groups, std::max(static_cast<int64_t>(1), khidden / 256), m_max}, dtype(torch::kFloat32).device(torch::kCUDA));
     std::vector<int64_t> stride_0 = {num_groups, m_max, std::max(static_cast<int64_t>(1), khidden / 256)};
     std::vector<int64_t> stride_1 = {m_max * std::max(static_cast<int64_t>(1), khidden / 256), static_cast<int64_t>(1), m_max};

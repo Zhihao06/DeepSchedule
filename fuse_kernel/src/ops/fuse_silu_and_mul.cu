@@ -5,6 +5,14 @@
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
 
+#define ENABLE_BF16
+
+#ifndef USE_ROCM
+  #define LDG(arg) __ldg(arg)
+#else
+  #define LDG(arg) *(arg)
+#endif
+
 template <typename TO, typename FROM>
 __device__ __forceinline__ TO to(FROM val) {
   return to(val);

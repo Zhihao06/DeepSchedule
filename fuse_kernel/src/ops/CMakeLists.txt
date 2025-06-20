@@ -1,7 +1,6 @@
 function(add_op_library target_name source_file)
-    add_library(${target_name} STATIC ${source_file})
+    add_library(${target_name} SHARED ${source_file})
     set_target_properties(${target_name} PROPERTIES
-            POSITION_INDEPENDENT_CODE ON
             CXX_STANDARD_REQUIRED ON
             CUDA_STANDARD_REQUIRED ON
             CXX_STANDARD 20

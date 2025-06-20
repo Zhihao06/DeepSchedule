@@ -69,19 +69,17 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3 -fPIC -DNDEBUG")
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -O3 -std=c++17 -DNDEBUG --ptxas-options=--register-usage-level=10")
 
 add_executable(fuse_app fuse.cpp)
+add_subdirectory(src/ops)
 target_include_directories(fuse_app PUBLIC ../deep_gemm/include)
 target_include_directories(fuse_app PUBLIC ../deep_ep/csrc)
 target_include_directories(fuse_app PUBLIC ${CUDA_TOOLKIT_ROOT_DIR}/include ${NVSHMEM_INCLUDE_DIR} ${TORCH_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})
 target_link_directories(fuse_app PUBLIC ../deep_ep/csrc/build)
 target_link_directories(fuse_app PUBLIC ../deep_gemm/kernels/build)
-target_link_libraries(fuse_app PUBLIC CUDA::cudart nvshmem cudadevrt mlx5 ${PYTHON_LIBRARIES} ${TORCH_LIBRARIES})
-target_link_libraries(fuse_app PUBLIC deep_ep) # deep_gemm
-
-add_subdirectory(src/ops)
-target_link_libraries(fuse_app PUBLIC fuse_silu_and_mul)
+target_link_libraries(fuse_app PRIVATE CUDA::cudart cudadevrt mlx5 nvshmem ${PYTHON_LIBRARIES} ${TORCH_LIBRARIES})
+target_link_libraries(fuse_app PRIVATE deep_ep fuse_silu_and_mul) # deep_gemm
 
 # 静态链接
-target_link_libraries(fuse_app PUBLIC deep_gemm_kernels)
+target_link_libraries(fuse_app PRIVATE deep_gemm_kernels)
 
 # 动态链接
 # file(GLOB GEMM_KERNEL_SO_LIBS "../deep_gemm/kernels/lib/*.so")
