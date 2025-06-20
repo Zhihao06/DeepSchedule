@@ -16,7 +16,6 @@
 #include "src/tools/debug.hpp"
 #include "src/tools/config.hpp"
 #include "src/gemm_gen.hpp"
-#include "src/ep_moe_fwd.hpp"
 
 #include "src/moe/base_moe.hpp"
 #include "src/moe/sequence_moe.hpp"
