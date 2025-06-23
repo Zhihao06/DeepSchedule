@@ -84,6 +84,7 @@ private:
 
 public:
     Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_bytes, bool low_latency_mode, bool use_cuda_graph, 
+        std::optional<c10::cuda::CUDAStream> stream,
         std::optional<bool> use_fp8 = std::nullopt, 
         std::optional<int> num_experts = std::nullopt, 
         std::optional<int> num_max_dispatch_tokens_per_rank = std::nullopt, 

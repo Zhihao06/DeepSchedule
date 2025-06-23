@@ -6,6 +6,7 @@ using namespace c10d;
 
 void get_deepep_low_latency_buffer(uint64_t num_max_dispatch_tokens_per_rank, uint64_t hidden, std::shared_ptr<ProcessGroupNCCL>& group, uint64_t num_groups, std::shared_ptr<Buffer>& buffer,
     bool use_cuda_graph, 
+    std::optional<c10::cuda::CUDAStream> comm_stream,
     std::optional<bool> use_fp8, std::optional<int> num_experts, 
     std::optional<int64_t> num_tokens
     ) {
@@ -23,9 +24,9 @@ void get_deepep_low_latency_buffer(uint64_t num_max_dispatch_tokens_per_rank, ui
         FUSE_HOST_ASSERT(use_fp8.has_value());
         FUSE_HOST_ASSERT(num_experts.has_value());
         FUSE_HOST_ASSERT(num_tokens.has_value());
-        buffer = std::make_shared<Buffer>(rank, group_size, num_nvl_bytes, num_rdma_bytes, low_latency_mode, true/*use_cuda_graph*/, use_fp8, num_experts, static_cast<int>(num_max_dispatch_tokens_per_rank), static_cast<int>(hidden), num_tokens);
+        buffer = std::make_shared<Buffer>(rank, group_size, num_nvl_bytes, num_rdma_bytes, low_latency_mode, true/*use_cuda_graph*/, comm_stream, use_fp8, num_experts, static_cast<int>(num_max_dispatch_tokens_per_rank), static_cast<int>(hidden), num_tokens);
     } else {
-        buffer = std::make_shared<Buffer>(rank, group_size, num_nvl_bytes, num_rdma_bytes, low_latency_mode, false/*use_cuda_graph*/);
+        buffer = std::make_shared<Buffer>(rank, group_size, num_nvl_bytes, num_rdma_bytes, low_latency_mode, false/*use_cuda_graph*/, comm_stream);
     }
     
     // Synchronize device IDs

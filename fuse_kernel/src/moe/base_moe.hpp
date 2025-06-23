@@ -10,9 +10,7 @@ class BaseMoE {
 protected:
     uint64_t num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden, num_max_dispatch_tokens_per_rank, expected_m, world_size;
 
-    void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, bool enable_profile) {
-        throw std::runtime_error("Not implemented");
-    }
+    virtual void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, bool enable_profile) = 0;
 
 public:
     torch::Tensor hidden_states, topk_ids, topk_weights;

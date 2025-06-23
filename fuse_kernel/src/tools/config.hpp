@@ -14,5 +14,6 @@ struct FUSEConfig {
 enum ModeType {
     NORMAL,
     OVERLAP,
-    TBO
+    TBO,
+    MULTI_TOKEN
 };

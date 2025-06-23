@@ -132,8 +132,8 @@ public:
             std::tie(hidden_states, topk_ids, topk_weights, x_fp8, y_fp8, out, o_vec, o_scales, o_scales_strided, silu_out, x_fp8_2, y_fp8_2, out_2) = initialize_random_inputs(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
             std::tie(hidden_states_b, topk_ids_b, topk_weights_b, x_fp8_b, y_fp8_b, out_b, o_vec_b, o_scales_b, o_scales_strided_b, silu_out_b, x_fp8_2_b, y_fp8_2_b, out_2_b) = initialize_random_inputs(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
             get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffer,
-                true/*use_cuda_graph*/, true/*use_fp8*/, num_experts, num_tokens);
+                true/*use_cuda_graph*/, std::nullopt, true/*use_fp8*/, num_experts, num_tokens);
             get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffer_b,
-                true/*use_cuda_graph*/, true/*use_fp8*/, num_experts, num_tokens);
+                true/*use_cuda_graph*/, std::nullopt, true/*use_fp8*/, num_experts, num_tokens);
     }
 };

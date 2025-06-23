@@ -17,6 +17,7 @@
 namespace deep_ep {
 
 Buffer::Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_bytes, bool low_latency_mode, bool use_cuda_graph, 
+    std::optional<c10::cuda::CUDAStream> stream,
     std::optional<bool> use_fp8, 
     std::optional<int> num_experts,
     std::optional<int> num_max_dispatch_tokens_per_rank, 
@@ -31,6 +32,9 @@ Buffer::Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_
     int64_t fifo_bytes = sizeof(int) * NUM_MAX_FIFO_SLOTS;
     int64_t buffer_ptr_bytes = sizeof(void*) * NUM_MAX_NVL_PEERS;
     int64_t task_ptr_bytes = sizeof(int*) * NUM_MAX_NVL_PEERS;
+
+    // Set comm stream
+    if (stream.has_value()) comm_stream = stream.value();
 
     // Common checks
     EP_HOST_ASSERT(num_nvl_bytes % NUM_BUFFER_ALIGNMENT_BYTES == 0 and (num_nvl_bytes <= std::numeric_limits<int>::max() or num_rdma_bytes == 0));
