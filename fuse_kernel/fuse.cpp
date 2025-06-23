@@ -19,8 +19,10 @@ void process_args(int argc, char** argv, ModeType& mode, bool& enable_traverse) 
             mode = ModeType::OVERLAP;
         } else if (arg == "2" || arg == "tbo") {
             mode = ModeType::TBO;
+        } else if (arg == "3" || arg == "multitoken") {
+            mode = ModeType::MULTI_TOKEN;
         } else {
-            std::cerr << "Usage: " << argv[0] << " [0|1|2|normal|overlap|tbo]" << std::endl;
+            std::cerr << "Usage: " << argv[0] << " [0|1|2|3|normal|overlap|tbo|multitoken]" << std::endl;
         }
     } 
     if (argc >= 3) {
