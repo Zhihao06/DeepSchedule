@@ -20,7 +20,7 @@ private:
     std::vector<std::optional<EventHandle>> event_cs;
     std::vector<std::optional<std::function<void()>>> hook_cs;
 
-    void _compute_op(cudaStream_t current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
+    void _compute_op(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
         // FC1
         get_function_for_gemm(num_split_tokens[index], khidden, hidden_size, num_groups, fuse_config->gemm_sms)(
             std::get<0>(x_fp8[index]).data_ptr(), std::get<1>(x_fp8[index]).data_ptr(),
@@ -35,7 +35,7 @@ private:
         // silu
         auto out_size = static_cast<int64_t>(num_groups * m_max);
         auto out_view = out[index].view({out_size, -1});
-        fuse_silu_and_mul_masked(silu_out[index], o_vec[index], o_scales[index], out_view, packed_recv_count[index], m_max);
+        fuse_silu_and_mul_masked(silu_out[index], o_vec[index], o_scales[index], out_view, packed_recv_count[index], m_max, current_stream);
 
         // FC2
         get_function_for_gemm(num_split_tokens[index], hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
@@ -49,27 +49,60 @@ private:
         );
     }
 
-    void _dispatch_op(cudaStream_t current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
-        std::tie(packed_recv_x[index], packed_recv_x_scales[index], packed_recv_count[index], packed_recv_src_info[index], packed_recv_layout_range[index], events[index], hooks[index]) = buffers[index]->low_latency_dispatch(hidden_states[index], topk_ids[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*async_finish*/, false/*return_recv_hook*/);
+    void _compute_fuse_op(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
+        _combine_op_a(comm_stream, fuse_config, index-1);
+        // FC1
+        get_function_for_gemm(num_split_tokens[index], khidden, hidden_size, num_groups, fuse_config->gemm_sms)(
+            std::get<0>(x_fp8[index]).data_ptr(), std::get<1>(x_fp8[index]).data_ptr(),
+            std::get<0>(y_fp8[index]).data_ptr(), std::get<1>(y_fp8[index]).data_ptr(),
+            out[index].data_ptr(),
+            packed_recv_count[index].data_ptr(),
+            expected_ms[index],
+            compute_stream,
+            fuse_config->gemm_sms
+        );
+        _dispatch_op_a(comm_stream, fuse_config, index+1);
+
+        // silu
+        auto out_size = static_cast<int64_t>(num_groups * m_max);
+        auto out_view = out[index].view({out_size, -1});
+        fuse_silu_and_mul_masked(silu_out[index], o_vec[index], o_scales[index], out_view, packed_recv_count[index], m_max, compute_stream);
+
+        // FC2
+        _dispatch_op_b(comm_stream, fuse_config, index+1);
+        get_function_for_gemm(num_split_tokens[index], hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
+            o_vec[index].data_ptr(), o_scales_strided[index].data_ptr(),
+            std::get<0>(y_fp8_2[index]).data_ptr(), std::get<1>(y_fp8_2[index]).data_ptr(),
+            out_2[index].data_ptr(),
+            packed_recv_count[index].data_ptr(),
+            expected_ms[index],
+            compute_stream,
+            fuse_config->gemm_sms
+        );
+        // _combine_op_b(comm_stream, fuse_config, index-1);
     }
 
-    void _combine_op(cudaStream_t current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
-        std::tie(combine_x[index], event_cs[index], hook_cs[index]) = buffers[index]->low_latency_combine(out_2[index].view(packed_recv_x[index].sizes()), topk_ids[index], topk_weights[index], packed_recv_src_info[index], packed_recv_layout_range[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, std::nullopt/*out: inplace tensor*/);
+    void _dispatch_op(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
+        std::tie(packed_recv_x[index], packed_recv_x_scales[index], packed_recv_count[index], packed_recv_src_info[index], packed_recv_layout_range[index], events[index], hooks[index]) = buffers[index]->low_latency_dispatch(hidden_states[index], topk_ids[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*async_finish*/, false/*return_recv_hook*/, current_stream);
     }
 
-    void _dispatch_op_a(cudaStream_t current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
-        std::tie(packed_recv_x[index], packed_recv_x_scales[index], packed_recv_count[index], packed_recv_src_info[index], packed_recv_layout_range[index], events[index], hooks[index]) = buffers[index]->low_latency_dispatch(hidden_states[index], topk_ids[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*async_finish*/, true/*return_recv_hook*/);
+    void _combine_op(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
+        std::tie(combine_x[index], event_cs[index], hook_cs[index]) = buffers[index]->low_latency_combine(out_2[index].view(packed_recv_x[index].sizes()), topk_ids[index], topk_weights[index], packed_recv_src_info[index], packed_recv_layout_range[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, current_stream/*run stream*/, std::nullopt/*out: inplace tensor*/);
     }
 
-    void _dispatch_op_b(cudaStream_t current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
+    void _dispatch_op_a(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
+        std::tie(packed_recv_x[index], packed_recv_x_scales[index], packed_recv_count[index], packed_recv_src_info[index], packed_recv_layout_range[index], events[index], hooks[index]) = buffers[index]->low_latency_dispatch(hidden_states[index], topk_ids[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*async_finish*/, true/*return_recv_hook*/, current_stream);
+    }
+
+    void _dispatch_op_b(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
         if (hooks[index].has_value()) hooks[index].value()();
     }
 
-    void _combine_op_a(cudaStream_t current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
-        std::tie(combine_x[index], event_cs[index], hook_cs[index]) = buffers[index]->low_latency_combine(out_2[index].view(packed_recv_x[index].sizes()), topk_ids[index], topk_weights[index], packed_recv_src_info[index], packed_recv_layout_range[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, true/*return_recv_hook*/, std::nullopt/*out: inplace tensor*/);
+    void _combine_op_a(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
+        std::tie(combine_x[index], event_cs[index], hook_cs[index]) = buffers[index]->low_latency_combine(out_2[index].view(packed_recv_x[index].sizes()), topk_ids[index], topk_weights[index], packed_recv_src_info[index], packed_recv_layout_range[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, true/*return_recv_hook*/, current_stream/*run stream*/, std::nullopt/*out: inplace tensor*/);
     }
 
-    void _combine_op_b(cudaStream_t current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
+    void _combine_op_b(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
         if (hook_cs[index].has_value()) hook_cs[index].value()();
     }
 
@@ -100,9 +133,43 @@ private:
         _combine_op_b(current_stream, fuse_config, num_splits - 1);
     }
 
+    void _moe_sched(std::shared_ptr<FUSEConfig>& fuse_config) {
+        c10::cuda::CUDAStream current_stream = at::cuda::getCurrentCUDAStream();
+        global_pg->barrier()->wait();
+
+        // Dispatch 0 issue
+        _dispatch_op_a(comm_stream, fuse_config, 0);
+        _dispatch_op_b(comm_stream, fuse_config, 0);
+        stream_wait(compute_stream, comm_stream);
+        _compute_op(compute_stream, fuse_config, 0);
+        _dispatch_op_a(comm_stream, fuse_config, 1);
+        _dispatch_op_b(comm_stream, fuse_config, 1);
+
+        // Index 1 to num_splits - 2
+        for (int i = 0; i < num_splits - 2; i++) {
+            stream_wait(compute_stream, comm_stream);
+            stream_wait(comm_stream, compute_stream);
+            _compute_fuse_op(compute_stream, fuse_config, i+1);
+        }
+
+        stream_wait(compute_stream, comm_stream);
+        stream_wait(comm_stream, compute_stream);
+        _combine_op_a(comm_stream, fuse_config, num_splits-2);
+        _compute_op(compute_stream, fuse_config, num_splits-1);
+        stream_wait(comm_stream, compute_stream);
+        _combine_op_a(comm_stream, fuse_config, num_splits-1);
+        for (int i = 0; i < num_splits - 1; i++) {
+            _combine_op_b(comm_stream, fuse_config, i);
+        }
+        _combine_op_b(comm_stream, fuse_config, num_splits-1);
+
+        cudaDeviceSynchronize();
+    }
+
 protected:
     void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, bool enable_profile) {
-        _moe_sync(fuse_config);
+        // _moe_sync(fuse_config);
+        _moe_sched(fuse_config);
     }
 
 public:
