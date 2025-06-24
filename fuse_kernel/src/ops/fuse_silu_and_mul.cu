@@ -149,7 +149,7 @@ __global__ void fuse_silu_and_mul_masked_kernel(
 
 template <typename scalar_t>
 void fuse_silu_and_mul_masked_launcher(
-    torch::Tensor& out, torch::Tensor& o_vec, torch::Tensor& o_scales, torch::Tensor& input, torch::Tensor& counts, const int max_tokens_per_block) {
+    torch::Tensor& out, torch::Tensor& o_vec, torch::Tensor& o_scales, torch::Tensor& input, torch::Tensor& counts, const int max_tokens_per_block, std::optional<cudaStream_t> stream) {
   int64_t num_input_tokens = input.numel() / input.size(-1);
   scalar_t* output_ptr = out.numel() == 0 ? nullptr : reinterpret_cast<scalar_t*>(out.data_ptr());
   assert (num_input_tokens = counts.numel() * max_tokens_per_block);
@@ -166,8 +166,9 @@ void fuse_silu_and_mul_masked_launcher(
 
   assert (dim % 128 == 0);
 
-  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-  fuse_silu_and_mul_masked_kernel<scalar_t><<<grid, block, 0, stream>>>(
+  cudaStream_t launch_stream = at::cuda::getCurrentCUDAStream();
+  if (stream.has_value()) launch_stream = stream.value();
+  fuse_silu_and_mul_masked_kernel<scalar_t><<<grid, block, 0, launch_stream>>>(
     output_ptr,
     reinterpret_cast<void*>(o_vec.data_ptr()),
     reinterpret_cast<void*>(o_scales.data_ptr()),
@@ -179,7 +180,7 @@ void fuse_silu_and_mul_masked_launcher(
 }
 
 void fuse_silu_and_mul_masked(
-    torch::Tensor& out, torch::Tensor& o_vec, torch::Tensor& o_scales, torch::Tensor& input, torch::Tensor& counts, const int max_tokens_per_block) {
+    torch::Tensor& out, torch::Tensor& o_vec, torch::Tensor& o_scales, torch::Tensor& input, torch::Tensor& counts, const int max_tokens_per_block, std::optional<cudaStream_t> stream) {
   std::uintptr_t input_addr = reinterpret_cast<std::uintptr_t>(input.data_ptr());
   std::uintptr_t out_addr = reinterpret_cast<std::uintptr_t>(out.data_ptr());
   int32_t dim = input.size(-1) / 2;
@@ -187,10 +188,10 @@ void fuse_silu_and_mul_masked(
   assert (ele_bytes == 2);
 
   if (input.scalar_type() == at::ScalarType::Half) {
-      fuse_silu_and_mul_masked_launcher<half>(out, o_vec, o_scales, input, counts, max_tokens_per_block);
+      fuse_silu_and_mul_masked_launcher<half>(out, o_vec, o_scales, input, counts, max_tokens_per_block, stream);
 #ifdef ENABLE_BF16
   } else if (input.scalar_type() == at::ScalarType::BFloat16) {
-      fuse_silu_and_mul_masked_launcher<__nv_bfloat16>(out, o_vec, o_scales, input, counts, max_tokens_per_block);
+      fuse_silu_and_mul_masked_launcher<__nv_bfloat16>(out, o_vec, o_scales, input, counts, max_tokens_per_block, stream);
 #endif
   } else {
     throw std::runtime_error(

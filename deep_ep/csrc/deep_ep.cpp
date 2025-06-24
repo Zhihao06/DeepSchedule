@@ -1049,7 +1049,7 @@ void Buffer::clean_low_latency_buffer(int num_max_dispatch_tokens_per_rank, int 
 std::tuple<torch::Tensor, std::optional<torch::Tensor>, torch::Tensor, torch::Tensor, torch::Tensor, std::optional<EventHandle>, std::optional<std::function<void()>>>
 Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_idx,
                              int num_max_dispatch_tokens_per_rank, int num_experts, int num_sms,
-                             bool use_fp8, bool async, bool return_recv_hook) {
+                             bool use_fp8, bool async, bool return_recv_hook, std::optional<c10::cuda::CUDAStream> run_stream) {
     EP_HOST_ASSERT(low_latency_mode);
 
     // Tensor checks
@@ -1075,6 +1075,7 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
     // NOTES: the hook mode will always use the default stream
     auto compute_stream = at::cuda::getCurrentCUDAStream();
     auto launch_stream = return_recv_hook ? compute_stream : comm_stream;
+    if (run_stream.has_value()) launch_stream = run_stream.value();
     EP_HOST_ASSERT(not (async and return_recv_hook));
     if (not return_recv_hook)
         stream_wait(launch_stream, compute_stream);
@@ -1140,7 +1141,7 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
                             const torch::Tensor& src_info, const torch::Tensor& layout_range,
                             int num_max_dispatch_tokens_per_rank, int num_experts, int num_sms,
                             bool zero_copy, bool async, bool return_recv_hook,
-                            const std::optional<torch::Tensor>& out) {
+                            std::optional<c10::cuda::CUDAStream> run_stream, const std::optional<torch::Tensor>& out) {
     EP_HOST_ASSERT(low_latency_mode);
 
     // Tensor checks
@@ -1173,6 +1174,7 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
     // NOTES: the hook mode will always use the default stream
     auto compute_stream = at::cuda::getCurrentCUDAStream();
     auto launch_stream = return_recv_hook ? compute_stream : comm_stream;
+    if (run_stream.has_value()) launch_stream = run_stream.value();
     EP_HOST_ASSERT(not (async and return_recv_hook));
     if (not return_recv_hook)
         stream_wait(launch_stream, compute_stream);

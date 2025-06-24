@@ -74,7 +74,7 @@ protected:
             combine_x,
             event_,
             hook_
-        ] = buffer->low_latency_combine(out_2.view(packed_recv_x.sizes()), topk_ids, topk_weights, packed_recv_src_info, packed_recv_layout_range, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, true/*return_recv_hook*/, std::nullopt/*out: inplace tensor*/);
+        ] = buffer->low_latency_combine(out_2.view(packed_recv_x.sizes()), topk_ids, topk_weights, packed_recv_src_info, packed_recv_layout_range, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, true/*return_recv_hook*/, std::nullopt/*run stream*/, std::nullopt/*out: inplace tensor*/);
 
         // 1: FC1
         get_function_for_gemm(num_tokens, khidden, hidden_size, num_groups, fuse_config->gemm_sms)(
@@ -111,7 +111,7 @@ protected:
             combine_x_b,
             event_b_,
             hook_b_
-        ] = buffer_b->low_latency_combine(out_2_b.view(packed_recv_x_b.sizes()), topk_ids_b, topk_weights_b, packed_recv_src_info_b, packed_recv_layout_range_b, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, true/*return_recv_hook*/, std::nullopt/*out: inplace tensor*/);
+        ] = buffer_b->low_latency_combine(out_2_b.view(packed_recv_x_b.sizes()), topk_ids_b, topk_weights_b, packed_recv_src_info_b, packed_recv_layout_range_b, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, true/*return_recv_hook*/, std::nullopt/*run stream*/, std::nullopt/*out: inplace tensor*/);
 
         // Combine 1 recv
         if (hook_b_.has_value()) hook_b_.value()();
