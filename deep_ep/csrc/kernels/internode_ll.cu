@@ -361,7 +361,7 @@ LAUNCH_KERNEL(&cfg, dispatch_func, \
 #undef SMS_CASE_MACRO
 }
 
-template <int kNumWarpGroups, int kNumWarpsPerGroup, int kHidden, int kNumMaxTopk>
+template <bool kUseFP8, int kNumWarpGroups, int kNumWarpsPerGroup, int kHidden, int kNumMaxTopk>
 __global__ __launch_bounds__(kNumWarpGroups * kNumWarpsPerGroup * 32, 1) void
 combine(void* combined_x,
         void* rdma_recv_x, int* rdma_recv_flag, void* rdma_send_x,
@@ -387,9 +387,14 @@ combine(void* combined_x,
     constexpr int kNumElemsPerInt4 = sizeof(int4) / sizeof(nv_bfloat16);
     const size_t hidden_bf16_int4 = kHidden / kNumElemsPerInt4;
 
+    // for FP8 cast
+    using vec_t = typename std::conditional<kUseFP8, int2, int4>::type;
+    const int num_scales = kHidden / 128;
+
     // Message package
-    constexpr size_t num_bytes_per_slot = kHidden * sizeof(nv_bfloat16);
+    constexpr size_t num_bytes_per_slot = (kUseFP8)? (kHidden + num_scales * sizeof(float)) : (kHidden * sizeof(nv_bfloat16));
     EP_STATIC_ASSERT(num_bytes_per_slot % sizeof(int4) == 0, "Invalid vectorization");
+    const size_t num_int4_per_msg = num_bytes_per_slot / sizeof(int4);
 
     // Sending phase
     if ((phases & LOW_LATENCY_SEND_PHASE) == 0)
@@ -423,6 +428,49 @@ combine(void* combined_x,
         int offset, num_tokens_to_send;
         unpack2(layout, num_tokens_to_send, offset);
 
+        if (kUseFP8) {
+            const size_t hidden_bytes = kHidden * sizeof(__nv_fp8_storage_t);
+            const auto num_threads_per_group = kNumWarpsPerGroup * 32;
+            constexpr float kFP8Margin = 1e-4, kFP8Amax = 448, kFP8AmaxInv = 1.0f / 448.0f;
+            #pragma unroll
+	        for (int token_idx = offset; token_idx < num_tokens_to_send + offset; token_idx ++) {
+                const auto x_int4 = local_x + token_idx * hidden_bf16_int4;
+                const auto rdma_x_vec = reinterpret_cast<vec_t*>(rdma_send_x_vec + token_idx * num_bytes_per_slot);
+                const auto rdma_x_scales = reinterpret_cast<float*>(reinterpret_cast<uint8_t*>(rdma_x_vec) + hidden_bytes);
+                #pragma unroll
+                for (int i = sub_warp_id * 32 + lane_id; i < hidden_bf16_int4; i += num_threads_per_group) {
+                    //calculate scales
+                    auto int4_value = __ldg(x_int4 + i);
+
+                    // Calculate local amax
+                    auto bf16_values = reinterpret_cast<nv_bfloat16*>(&int4_value);
+                    float fp32_values[kNumElemsPerInt4];
+                    float amax = kFP8Margin, scale, scale_inv;
+                    #pragma unroll
+                    for (int j = 0; j < kNumElemsPerInt4; ++ j) {
+                        fp32_values[j] = static_cast<float>(bf16_values[j]);
+                        amax = fmaxf(amax, fabsf(fp32_values[j]));
+                    }
+                    // Reduce amax and scale
+                    EP_STATIC_ASSERT(kNumElemsPerInt4 * 32 / 128 == 2, "Invalid vectorization");
+                    amax = half_warp_reduce_max(amax), scale = kFP8Amax / amax, scale_inv = amax * kFP8AmaxInv;
+                    if (lane_id == 0 or lane_id == 16)
+                        rdma_x_scales[i * kNumElemsPerInt4 / 128] = scale_inv;
+
+                    // Cast into send buffer
+                    vec_t int2_value;
+                    auto fp8x2_values = reinterpret_cast<__nv_fp8x2_storage_t*>(&int2_value);
+                    #pragma unroll
+                    for (int j = 0; j < kNumElemsPerInt4; j += 2) {
+                        float2 fp32x2 = {fp32_values[j] * scale, fp32_values[j + 1] * scale};
+                        fp8x2_values[j / 2] = __nv_cvt_float2_to_fp8x2(fp32x2, __NV_SATFINITE, __NV_E4M3);
+                    }
+                    rdma_x_vec[i] = int2_value;
+                }
+                asm volatile("bar.sync %0, %1;" :: "r"(warp_group_id + 1), "r"(num_threads_per_group));
+	        }
+        }
+
         // Issue IBGDA send
         for (int token_idx = offset + sub_warp_id; token_idx < offset + num_tokens_to_send; token_idx += kNumWarpsPerGroup) {
             const auto x_int4 = local_x + token_idx * hidden_bf16_int4;
@@ -433,14 +481,21 @@ combine(void* combined_x,
             auto src_idx = __ldg(local_src_info + token_idx);
             const auto buf_ptr = reinterpret_cast<int64_t>(rdma_send_x_vec_row);
             const auto dst_ptr = reinterpret_cast<uint64_t>(rdma_recv_x) + (global_expert_idx * num_max_dispatch_tokens_per_rank + src_idx) * num_bytes_per_slot;
+            const auto buf_int4_ptr = reinterpret_cast<int4*>(buf_ptr);
             if (dst_rank == rank) {
                 const auto dst_int4_ptr = reinterpret_cast<int4*>(dst_ptr);
-                UNROLLED_WARP_COPY(7, lane_id, hidden_bf16_int4, dst_int4_ptr, x_int4, ld_nc_global, st_na_global);
+                if (kUseFP8) {
+                    UNROLLED_WARP_COPY(7, lane_id, num_int4_per_msg, dst_int4_ptr, buf_int4_ptr, ld_nc_global, st_na_global);
+                } else {
+                    UNROLLED_WARP_COPY(7, lane_id, hidden_bf16_int4, dst_int4_ptr, x_int4, ld_nc_global, st_na_global);
+                }
             } else {
-                const auto buf_int4_ptr = reinterpret_cast<int4*>(buf_ptr);
-                if (not zero_copy)
-                    UNROLLED_WARP_COPY(7, lane_id, hidden_bf16_int4, buf_int4_ptr, x_int4, ld_nc_global, st_na_global);
-                nvshmemi_ibgda_put_nbi_warp(dst_ptr, buf_ptr, hidden * sizeof(nv_bfloat16), dst_rank, local_expert_idx, lane_id, token_idx - offset);
+                if (not zero_copy) {
+                    if (not kUseFP8) {
+                        UNROLLED_WARP_COPY(7, lane_id, hidden_bf16_int4, buf_int4_ptr, x_int4, ld_nc_global, st_na_global);
+                    }
+                }
+                nvshmemi_ibgda_put_nbi_warp(dst_ptr, buf_ptr, num_bytes_per_slot, dst_rank, local_expert_idx, lane_id, token_idx - offset);
             }
         }
 
@@ -524,7 +579,7 @@ void combine(void* combined_x,
              const int* src_info, const int64_t* layout_range,
              int* next_clean, int num_next_clean_int,
              int num_combined_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
-             int num_topk, int num_experts, int rank, int num_ranks, int num_sms,
+             int num_topk, int num_experts, int rank, int num_ranks, int num_sms, bool use_fp8,
              void* workspace, cudaStream_t stream,
              int phases, bool zero_copy, int* grid_sync_counter) {
     const int kNumMaxTopk = 9;
@@ -540,7 +595,8 @@ void combine(void* combined_x,
     EP_HOST_ASSERT(num_topk <= kNumMaxTopk);
 
 #define COMBINE_LAUNCH_CASE(hidden, num_sms, num_experts, kNumWarpGroups, kNumWarpsPerGroup) { \
-auto combine_func = combine<kNumWarpGroups, kNumWarpsPerGroup, hidden, kNumMaxTopk>; \
+auto combine_func = use_fp8 ? combine<true, kNumWarpGroups, kNumWarpsPerGroup, hidden, kNumMaxTopk> : \
+                              combine<false, kNumWarpGroups, kNumWarpsPerGroup, hidden, kNumMaxTopk>; \
 SETUP_LAUNCH_CONFIG(num_sms, num_warps * 32, stream); \
 LAUNCH_KERNEL(&cfg, combine_func, \
               combined_x, \

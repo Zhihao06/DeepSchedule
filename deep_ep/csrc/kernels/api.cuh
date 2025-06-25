@@ -146,7 +146,7 @@ void combine(void* combined_x,
              const int* src_info, const int64_t* layout_range,
              int* next_clean, int num_next_clean_int,
              int num_combined_tokens, int hidden, int num_max_dispatch_tokens_per_rank,
-             int num_topk, int num_experts, int rank, int num_ranks, int num_sms,
+             int num_topk, int num_experts, int rank, int num_ranks, int num_sms, bool use_fp8,
              void* workspace, cudaStream_t stream,
              int phases, bool zero_copy, int* grid_sync_counter);
 
