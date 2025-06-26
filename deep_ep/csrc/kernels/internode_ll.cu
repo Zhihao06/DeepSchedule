@@ -7,6 +7,19 @@ namespace deep_ep {
 
 namespace internode_ll {
 
+__device__ __forceinline__
+void cvt_bf8_values_to_combined_values(__nv_fp8x2_storage_t* bf8, int elem_num_per_int4, float scale, float weight, float* combined_values) {
+    __half2_raw half_raw_val;
+    float2 f2;
+    #pragma unroll
+    for (int i = 1; i < elem_num_per_int4; i += 2) {
+        half_raw_val = __nv_cvt_fp8x2_to_halfraw2(bf8[i / 2], __NV_E4M3);
+        f2 = __half22float2(__half2(half_raw_val));
+        combined_values[i - 1] += (f2.x * scale) * weight;
+        combined_values[i] += (f2.y * scale) * weight;
+    }
+}
+
 template <int kNumThreads> __launch_bounds__(kNumThreads, 1)
 __global__ void clean_low_latency_buffer(int* clean_0, int num_clean_int_0,
                                          int* clean_1, int num_clean_int_1) {
@@ -556,10 +569,18 @@ combine(void* combined_x,
 
                 // Reduce
                 auto x_vec = ld_nc_global(reinterpret_cast<const int4*>(rdma_buffer_row) + thread_id);
-                const auto x_bf16 = reinterpret_cast<nv_bfloat16*>(&x_vec);
-                #pragma unroll
-                for (int j = 0; j < kNumElemsPerInt4; ++ j)
-                    combined_values[j] += static_cast<float>(x_bf16[j]) * reg_topk_weights[i];
+                if (kUseFP8) {
+                    const auto x_bf8 = reinterpret_cast<__nv_fp8x2_storage_t*>(&x_vec);
+                    const size_t hidden_bytes = kHidden * sizeof(__nv_fp8_storage_t);
+                    auto src_scales = reinterpret_cast<const float*>(rdma_buffer_row + hidden_bytes);
+                    auto scale = lane_id < num_scales ? ld_nc_global(src_scales + (thread_id / 16)) : 0;
+                    cvt_bf8_values_to_combined_values(x_bf8, kNumElemsPerInt4, scale, reg_topk_weights[i], combined_values);
+                } else {
+                    const auto x_bf16 = reinterpret_cast<nv_bfloat16*>(&x_vec);
+                    #pragma unroll
+                    for (int j = 0; j < kNumElemsPerInt4; ++ j)
+                        combined_values[j] += static_cast<float>(x_bf16[j]) * reg_topk_weights[i];
+                }
             }
 
             // Write results
