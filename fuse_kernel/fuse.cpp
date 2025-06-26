@@ -62,7 +62,7 @@ void process_args(int argc, char** argv, ModeType& mode, bool& enable_traverse, 
     }
     if (argc >= 5) {
         std::string arg = argv[4];
-        std::vector<uint64_t> num_splits = splitStringToIntVector(arg);
+        num_splits = splitStringToIntVector(arg);
     }
 }
 
