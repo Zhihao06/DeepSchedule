@@ -17,3 +17,9 @@ enum ModeType {
     TBO,
     MULTI_TOKEN
 };
+
+// launch mode
+enum LaunchMode {
+    SYNC_LAUNCH,
+    SCHED_LAUNCH
+};

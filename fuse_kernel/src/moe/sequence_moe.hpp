@@ -45,7 +45,7 @@ protected:
             combine_x,
             event_,
             hook_
-        ] = buffer->low_latency_combine(out_2.view(packed_recv_x.sizes()), topk_ids, topk_weights, packed_recv_src_info, packed_recv_layout_range, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, std::nullopt/*run stream*/, std::nullopt/*out: inplace tensor*/);
+        ] = buffer->low_latency_combine(out_2.view(packed_recv_x.sizes()), topk_ids, topk_weights, packed_recv_src_info, packed_recv_layout_range, num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, std::nullopt/*run stream*/, std::nullopt/*out: inplace tensor*/);
         if (enable_profile) cudaProfilerStop();
         cudaDeviceSynchronize();
     }

@@ -48,7 +48,8 @@ void destroy_distributed() {
     global_pg->shutdown();
 }
 
-void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, uint64_t num_topk, uint64_t world_size, ModeType mode) {
+void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, 
+    uint64_t num_topk, uint64_t world_size, ModeType mode, LaunchMode launch_mode = LaunchMode::SYNC_LAUNCH, std::vector<uint64_t> num_splits = {}) {
     global_pg->barrier()->wait();
     uint64_t num_groups = num_experts / world_size;
     std::vector<int> ep_sms = {24};
@@ -67,9 +68,15 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
             global_pg->getSize(), global_pg);
         moe.run(ep_sms, repeat_times, false/*enable_profile*/);
     } else if (mode == ModeType::MULTI_TOKEN) {
-        MultiTokenMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
-            global_pg->getSize(), global_pg, 8/*num_splits*/, {}/*num_split_tokens*/);
-        moe.run(ep_sms, repeat_times, false/*enable_profile*/);
+        if (num_splits.size() == 0) {
+            MultiTokenMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
+                global_pg->getSize(), global_pg, 2, {}, launch_mode);
+                moe.run(ep_sms, repeat_times, false/*enable_profile*/);
+        } else {
+            MultiTokenMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
+                global_pg->getSize(), global_pg, num_splits.size(), num_splits, launch_mode);
+                moe.run(ep_sms, repeat_times, false/*enable_profile*/);
+        }
     } else {
         throw std::runtime_error("Not supported mode");
     }

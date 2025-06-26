@@ -8,6 +8,7 @@ class MultiTokenMoE : public BaseMoE {
 private:
     uint64_t num_splits;
     std::vector<uint64_t> num_split_tokens;
+    LaunchMode launch_mode;
     std::vector<uint64_t> expected_ms;
     std::vector<torch::Tensor> packed_recv_x;
     std::vector<std::optional<torch::Tensor>> packed_recv_x_scales;
@@ -87,7 +88,7 @@ private:
     }
 
     void _combine_op(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
-        std::tie(combine_x[index], event_cs[index], hook_cs[index]) = buffers[index]->low_latency_combine(out_2[index].view(packed_recv_x[index].sizes()), topk_ids[index], topk_weights[index], packed_recv_src_info[index], packed_recv_layout_range[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, current_stream/*run stream*/, std::nullopt/*out: inplace tensor*/);
+        std::tie(combine_x[index], event_cs[index], hook_cs[index]) = buffers[index]->low_latency_combine(out_2[index].view(packed_recv_x[index].sizes()), topk_ids[index], topk_weights[index], packed_recv_src_info[index], packed_recv_layout_range[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*zero_copy*/, false/*async_finish*/, false/*return_recv_hook*/, current_stream/*run stream*/, std::nullopt/*out: inplace tensor*/);
     }
 
     void _dispatch_op_a(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
@@ -99,7 +100,7 @@ private:
     }
 
     void _combine_op_a(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
-        std::tie(combine_x[index], event_cs[index], hook_cs[index]) = buffers[index]->low_latency_combine(out_2[index].view(packed_recv_x[index].sizes()), topk_ids[index], topk_weights[index], packed_recv_src_info[index], packed_recv_layout_range[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, false/*zero_copy*/, false/*async_finish*/, true/*return_recv_hook*/, current_stream/*run stream*/, std::nullopt/*out: inplace tensor*/);
+        std::tie(combine_x[index], event_cs[index], hook_cs[index]) = buffers[index]->low_latency_combine(out_2[index].view(packed_recv_x[index].sizes()), topk_ids[index], topk_weights[index], packed_recv_src_info[index], packed_recv_layout_range[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*zero_copy*/, false/*async_finish*/, true/*return_recv_hook*/, current_stream/*run stream*/, std::nullopt/*out: inplace tensor*/);
     }
 
     void _combine_op_b(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
@@ -168,8 +169,8 @@ private:
 
 protected:
     void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, bool enable_profile) {
-        // _moe_sync(fuse_config);
-        _moe_sched(fuse_config);
+        if (launch_mode == LaunchMode::SCHED_LAUNCH) _moe_sched(fuse_config);
+        else _moe_sync(fuse_config);
     }
 
 public:
@@ -183,9 +184,9 @@ public:
     c10::cuda::CUDAStream comm_stream, compute_stream;
 
     MultiTokenMoE(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, 
-        uint64_t num_topk, uint64_t world_size, std::shared_ptr<ProcessGroupNCCL>& global_pg, uint64_t num_splits, std::vector<uint64_t> num_split_tokens): 
+        uint64_t num_topk, uint64_t world_size, std::shared_ptr<ProcessGroupNCCL>& global_pg, uint64_t num_splits = 2, std::vector<uint64_t> num_split_tokens = {}, LaunchMode launch_mode = LaunchMode::SYNC_LAUNCH): 
         BaseMoE(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk, world_size, global_pg),
-        num_splits(num_splits), comm_stream(at::cuda::getStreamFromPool(true)), compute_stream(at::cuda::getStreamFromPool(true)) {
+        num_splits(num_splits), launch_mode(launch_mode), comm_stream(at::cuda::getStreamFromPool(true)), compute_stream(at::cuda::getStreamFromPool(true)) {
             assert(num_splits > 1);
             if (num_split_tokens.size() == 0) { // average split
                 assert(num_tokens % num_splits == 0);
