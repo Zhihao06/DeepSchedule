@@ -57,7 +57,7 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
 
     if (mode == ModeType::NORMAL) {
         SequenceMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
-            global_pg->getSize(), global_pg);
+            global_pg->getSize(), global_pg, true/*enable_random*/);
         moe.run(ep_sms, repeat_times, false/*enable_profile*/);
     } else if (mode == ModeType::OVERLAP) {
         OverlapMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
@@ -70,11 +70,11 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
     } else if (mode == ModeType::MULTI_TOKEN) {
         if (num_splits.size() == 0) {
             MultiTokenMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
-                global_pg->getSize(), global_pg, 2, {}, launch_mode);
+                global_pg->getSize(), global_pg, true/*enable_random*/, 2, {}, launch_mode);
                 moe.run(ep_sms, repeat_times, false/*enable_profile*/);
         } else {
             MultiTokenMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
-                global_pg->getSize(), global_pg, num_splits.size(), num_splits, launch_mode);
+                global_pg->getSize(), global_pg, true/*enable_random*/, num_splits.size(), num_splits, launch_mode);
                 moe.run(ep_sms, repeat_times, false/*enable_profile*/);
         }
     } else {

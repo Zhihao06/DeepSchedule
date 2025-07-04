@@ -186,8 +186,8 @@ initialize_random_inputs(int64_t num_tokens, int64_t num_topk, int64_t num_group
     auto out = std::get<2>(result1);
 
     // 5. silu_and_mul_masked inputs
-    auto o_vec = torch::randn({num_groups, m_max, khidden / 2}, torch::kCUDA).to(torch::kFloat8_e4m3fn);
-    auto o_scales = torch::randn({num_groups, std::max(static_cast<int64_t>(1), khidden / 256), m_max}, dtype(torch::kFloat32).device(torch::kCUDA));
+    auto o_vec = torch::empty({num_groups, m_max, khidden / 2}, torch::kCUDA).to(torch::kFloat8_e4m3fn);
+    auto o_scales = torch::empty({num_groups, std::max(static_cast<int64_t>(1), khidden / 256), m_max}, dtype(torch::kFloat32).device(torch::kCUDA));
     std::vector<int64_t> stride_0 = {num_groups, m_max, std::max(static_cast<int64_t>(1), khidden / 256)};
     std::vector<int64_t> stride_1 = {m_max * std::max(static_cast<int64_t>(1), khidden / 256), static_cast<int64_t>(1), m_max};
     auto o_scales_strided = torch::as_strided(o_scales, stride_0, stride_1);
@@ -206,4 +206,34 @@ initialize_random_inputs(int64_t num_tokens, int64_t num_topk, int64_t num_group
         o_vec, o_scales, o_scales_strided, silu_out,
         x_fp8_2, y_fp8_2, out_2
     );
+}
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+initialize_emptys(int64_t num_tokens, int64_t num_topk, int64_t num_groups, int64_t num_experts,
+    int64_t m_max, int64_t hidden_size, int64_t khidden) {
+
+    auto out = torch::empty({num_groups, m_max, khidden}, dtype(torch::kBFloat16).device(torch::kCUDA));
+    
+    // 5. silu_and_mul_masked inputs
+    auto o_vec = torch::empty({num_groups, m_max, khidden / 2}, torch::kCUDA).to(torch::kFloat8_e4m3fn);
+    auto o_scales = torch::empty({num_groups, std::max(static_cast<int64_t>(1), khidden / 256), m_max}, dtype(torch::kFloat32).device(torch::kCUDA));
+    std::vector<int64_t> stride_0 = {num_groups, m_max, std::max(static_cast<int64_t>(1), khidden / 256)};
+    std::vector<int64_t> stride_1 = {m_max * std::max(static_cast<int64_t>(1), khidden / 256), static_cast<int64_t>(1), m_max};
+    auto o_scales_strided = torch::as_strided(o_scales, stride_0, stride_1);
+    auto silu_out = torch::empty({0}, dtype(torch::kBFloat16).device(torch::kCUDA));
+
+    auto out_2 = torch::empty({num_groups, m_max, hidden_size}, dtype(torch::kBFloat16).device(torch::kCUDA));
+
+    return std::make_tuple(out, o_vec, o_scales, o_scales_strided, silu_out, out_2);
+}
+
+std::vector<torch::Tensor> custom_split(const torch::Tensor& tensor, const std::vector<uint64_t>& sizes, int64_t dim) {
+    std::vector<torch::Tensor> result;
+    int offset = 0;
+    for (int size : sizes) {
+        torch::Tensor slice = tensor.slice(dim, offset, offset + size);
+        result.push_back(slice);
+        offset += size;
+    }
+    return result;
 }
