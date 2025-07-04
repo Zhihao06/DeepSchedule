@@ -72,7 +72,6 @@ private:
     int* moe_recv_rdma_counter_mapped = nullptr;
 
     // Use Cuda Graph
-    bool use_cuda_graph = false;
     torch::Tensor packed_recv_x, packed_recv_src_info, packed_recv_layout_range, packed_recv_count, combined_x;
     std::optional<torch::Tensor> packed_recv_x_scales;
 
@@ -83,13 +82,8 @@ private:
     void move_fifo_slots(int num_slots = 1);
 
 public:
-    Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_bytes, bool low_latency_mode, bool use_cuda_graph, 
-        std::optional<c10::cuda::CUDAStream> stream,
-        std::optional<bool> use_fp8 = std::nullopt, 
-        std::optional<int> num_experts = std::nullopt, 
-        std::optional<int> num_max_dispatch_tokens_per_rank = std::nullopt, 
-        std::optional<int> hidden = std::nullopt, 
-        std::optional<int64_t> num_tokens = std::nullopt);
+    Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_bytes, bool low_latency_mode,
+        std::optional<c10::cuda::CUDAStream> stream);
 
     ~Buffer() noexcept(false);
 

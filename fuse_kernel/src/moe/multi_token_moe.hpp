@@ -238,8 +238,7 @@ public:
                 } else {
                     std::tie(out[i], o_vec[i], o_scales[i], o_scales_strided[i], silu_out[i], out_2[i]) = initialize_emptys(this->num_split_tokens[i], num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
                 }
-                get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffers[i],
-                    true/*use_cuda_graph*/, comm_stream, true/*use_fp8*/, num_experts, this->num_split_tokens[i]);
+                get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffers[i], comm_stream);
             }
     }
 
