@@ -5,6 +5,8 @@
 #include <algorithm>
 #include "debug.hpp"
 
+using namespace c10d;
+
 // cuda events
 #define CUDA_EVENT_START(name) \
     cudaEvent_t start_##name, stop_##name; \
@@ -178,7 +180,7 @@ torch::Tensor expand_tensor_to_size(const torch::Tensor& input, const std::vecto
 }
 
 template <typename T>
-void all_gather_wrap(std::vector<T>& outputs, T& input, std::shared_ptr<c10d::ProcessGroupNCCL>& group) {
+void all_gather_wrap(std::vector<T>& outputs, T& input, c10::intrusive_ptr<ProcessGroupNCCL>& group) {
     int rank = group->getRank();
     int group_size = group->getSize();
 
@@ -205,7 +207,7 @@ void all_gather_wrap(std::vector<T>& outputs, T& input, std::shared_ptr<c10d::Pr
 }
 
 template <typename T>
-void all_gather_wrap(std::vector<std::vector<T>>& outputs, std::vector<T>& input, std::shared_ptr<c10d::ProcessGroupNCCL>& group) {
+void all_gather_wrap(std::vector<std::vector<T>>& outputs, std::vector<T>& input, c10::intrusive_ptr<ProcessGroupNCCL>& group) {
     int rank = group->getRank();
     int group_size = group->getSize();
 

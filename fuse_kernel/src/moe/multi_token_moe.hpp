@@ -184,7 +184,7 @@ public:
     c10::cuda::CUDAStream comm_stream, compute_stream;
 
     MultiTokenMoE(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, 
-        uint64_t num_topk, uint64_t world_size, std::shared_ptr<ProcessGroupNCCL>& global_pg, uint64_t num_splits = 2, std::vector<uint64_t> num_split_tokens = {}, LaunchMode launch_mode = LaunchMode::SYNC_LAUNCH): 
+        uint64_t num_topk, uint64_t world_size, c10::intrusive_ptr<ProcessGroupNCCL>& global_pg, uint64_t num_splits = 2, std::vector<uint64_t> num_split_tokens = {}, LaunchMode launch_mode = LaunchMode::SYNC_LAUNCH): 
         BaseMoE(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk, world_size, global_pg),
         num_splits(num_splits), launch_mode(launch_mode), comm_stream(at::cuda::getStreamFromPool(true)), compute_stream(at::cuda::getStreamFromPool(true)) {
             assert(num_splits > 1);

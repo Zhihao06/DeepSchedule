@@ -28,7 +28,7 @@ using namespace c10d;
 
 #define TEMPLATE_SMS 54
 
-std::shared_ptr<ProcessGroupNCCL> global_pg;
+c10::intrusive_ptr<ProcessGroupNCCL> global_pg;
 
 void init_distributed(int rank, int world_size) {
     std::string host = "localhost";
@@ -39,7 +39,7 @@ void init_distributed(int rank, int world_size) {
     opts.numWorkers = world_size;
 
     c10::intrusive_ptr<Store> store = c10::make_intrusive<TCPStore>("localhost", opts);
-    global_pg = std::make_shared<c10d::ProcessGroupNCCL>(store, rank, world_size);
+    global_pg = c10::make_intrusive<c10d::ProcessGroupNCCL>(store, rank, world_size);
 }
 
 void destroy_distributed() {

@@ -4,7 +4,7 @@ using namespace deep_ep;
 using namespace internode;
 using namespace c10d;
 
-void get_deepep_low_latency_buffer(uint64_t num_max_dispatch_tokens_per_rank, uint64_t hidden, std::shared_ptr<ProcessGroupNCCL>& group, uint64_t num_groups, std::shared_ptr<Buffer>& buffer,
+void get_deepep_low_latency_buffer(uint64_t num_max_dispatch_tokens_per_rank, uint64_t hidden, c10::intrusive_ptr<ProcessGroupNCCL>& group, uint64_t num_groups, std::shared_ptr<Buffer>& buffer,
     bool use_cuda_graph, 
     std::optional<c10::cuda::CUDAStream> comm_stream,
     std::optional<bool> use_fp8, std::optional<int> num_experts, 

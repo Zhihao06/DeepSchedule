@@ -19,11 +19,11 @@ public:
     std::tuple<torch::Tensor, torch::Tensor> x_fp8_2, y_fp8_2;
     torch::Tensor out, out_2;
 
-    std::shared_ptr<ProcessGroupNCCL> global_pg;
+    c10::intrusive_ptr<ProcessGroupNCCL> global_pg;
     std::shared_ptr<Buffer> buffer;
 
     BaseMoE(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, 
-        uint64_t num_topk, uint64_t world_size, std::shared_ptr<ProcessGroupNCCL>& global_pg):
+        uint64_t num_topk, uint64_t world_size, c10::intrusive_ptr<ProcessGroupNCCL>& global_pg):
         num_experts(num_experts), num_max_dispatch_tokens_per_rank(num_max_dispatch_tokens_per_rank), 
         khidden(khidden), hidden_size(hidden_size), num_tokens(num_tokens), num_topk(num_topk), 
         world_size(world_size), global_pg(global_pg) {
