@@ -37,7 +37,7 @@ private:
         auto out_size = static_cast<int64_t>(num_groups * m_max);
         auto out_view = out[index].view({out_size, -1});
         fuse_silu_and_mul_masked(silu_out[index], o_vec[index], o_scales[index], out_view, packed_recv_count[index], m_max, current_stream);
-        o_scales_strided[index] = get_col_major_tma_aligned_tensor(o_scales[index]);
+        o_scales_strided[index] = get_col_major_tma_aligned_tensor(o_scales[index], current_stream);
 
         // FC2
         get_function_for_gemm(num_split_tokens[index], hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
@@ -69,7 +69,7 @@ private:
         auto out_size = static_cast<int64_t>(num_groups * m_max);
         auto out_view = out[index].view({out_size, -1});
         fuse_silu_and_mul_masked(silu_out[index], o_vec[index], o_scales[index], out_view, packed_recv_count[index], m_max, compute_stream);
-        o_scales_strided[index] = get_col_major_tma_aligned_tensor(o_scales[index]);
+        o_scales_strided[index] = get_col_major_tma_aligned_tensor(o_scales[index], compute_stream);
 
         // FC2
         _dispatch_op_b(comm_stream, fuse_config, index+1);
