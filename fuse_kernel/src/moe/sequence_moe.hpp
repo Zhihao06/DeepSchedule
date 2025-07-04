@@ -7,7 +7,7 @@ using namespace c10d;
 
 class SequenceMoE : public BaseMoE {
 protected:
-    void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, bool enable_profile) {
+    void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, LaunchMode launch_mode, bool enable_profile) {
         cudaStream_t current_stream = at::cuda::getCurrentCUDAStream();
         if (enable_profile) cudaProfilerStart();
         global_pg->barrier()->wait();
@@ -55,7 +55,7 @@ public:
         uint64_t num_topk, uint64_t world_size, c10::intrusive_ptr<ProcessGroupNCCL>& global_pg, bool enable_random = true): 
         BaseMoE(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk, world_size, global_pg) {
             if (enable_random) std::tie(hidden_states, topk_ids, topk_weights, x_fp8, y_fp8, out, o_vec, o_scales, o_scales_strided, silu_out, x_fp8_2, y_fp8_2, out_2) = initialize_random_inputs(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
-            else std::tie(out, o_vec, o_scales, o_scales_strided, silu_out, out_2) = initialize_emptys(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
+            else std::tie(out, o_vec, o_scales, o_scales_strided, silu_out, out_2) = initialize_empty_intermediate(num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
             get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffer, std::nullopt);
     }
 };

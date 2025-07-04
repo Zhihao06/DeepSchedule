@@ -20,6 +20,7 @@ enum ModeType {
 
 // launch mode
 enum LaunchMode {
+    DEFAULT_LAUNCH, // default
     SYNC_LAUNCH,
     SCHED_LAUNCH
 };

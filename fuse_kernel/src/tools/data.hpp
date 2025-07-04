@@ -209,7 +209,7 @@ initialize_random_inputs(int64_t num_tokens, int64_t num_topk, int64_t num_group
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
-initialize_emptys(int64_t num_tokens, int64_t num_topk, int64_t num_groups, int64_t num_experts,
+initialize_empty_intermediate(int64_t num_tokens, int64_t num_topk, int64_t num_groups, int64_t num_experts,
     int64_t m_max, int64_t hidden_size, int64_t khidden) {
 
     auto out = torch::empty({num_groups, m_max, khidden}, dtype(torch::kBFloat16).device(torch::kCUDA));

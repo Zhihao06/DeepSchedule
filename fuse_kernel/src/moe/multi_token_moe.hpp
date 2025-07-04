@@ -8,7 +8,6 @@ class MultiTokenMoE : public BaseMoE {
 private:
     uint64_t num_splits;
     std::vector<uint64_t> num_split_tokens;
-    LaunchMode launch_mode;
     std::vector<uint64_t> expected_ms;
     std::vector<torch::Tensor> packed_recv_x;
     std::vector<std::optional<torch::Tensor>> packed_recv_x_scales;
@@ -171,7 +170,7 @@ private:
     }
 
 protected:
-    void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, bool enable_profile) {
+    void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, LaunchMode launch_mode, bool enable_profile) {
         assert(hidden_states.size() > 0 and topk_ids.size() > 0 and std::get<0>(y_fp8).defined() and std::get<0>(y_fp8_2).defined());
         if (launch_mode == LaunchMode::SCHED_LAUNCH) _moe_sched(fuse_config);
         else _moe_sync(fuse_config);
@@ -190,18 +189,10 @@ public:
     c10::cuda::CUDAStream comm_stream, compute_stream;
 
     MultiTokenMoE(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, 
-        uint64_t num_topk, uint64_t world_size, c10::intrusive_ptr<ProcessGroupNCCL>& global_pg, bool enable_random = true, uint64_t num_splits = 2, std::vector<uint64_t> num_split_tokens = {}, LaunchMode launch_mode = LaunchMode::SYNC_LAUNCH): 
+        uint64_t num_topk, uint64_t world_size, c10::intrusive_ptr<ProcessGroupNCCL>& global_pg, bool enable_random = true, uint64_t num_splits = 2): 
         BaseMoE(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk, world_size, global_pg),
-        num_splits(num_splits), launch_mode(launch_mode), enable_random(enable_random), comm_stream(at::cuda::getStreamFromPool(true)), compute_stream(at::cuda::getStreamFromPool(true)) {
+        num_splits(num_splits), enable_random(enable_random), comm_stream(at::cuda::getStreamFromPool(true)), compute_stream(at::cuda::getStreamFromPool(true)) {
             assert(num_splits > 1);
-            if (num_split_tokens.size() == 0) { // average split
-                assert(num_tokens % num_splits == 0);
-                this->num_split_tokens = std::vector<uint64_t>(num_splits, num_tokens / num_splits);
-            } else { // manual split
-                assert(num_split_tokens.size() == num_splits);
-                assert(std::accumulate(num_split_tokens.begin(), num_split_tokens.end(), 0) == num_tokens);
-                this->num_split_tokens = num_split_tokens;
-            }
 
             // get default variables
             hidden_states.resize(num_splits);
@@ -232,14 +223,27 @@ public:
             hook_cs.resize(num_splits);
 
             for (int i = 0; i < num_splits; i++) {
-                expected_ms[i] = std::max(1UL, (this->num_split_tokens[i] * num_topk + num_experts - 1) / num_experts * 2);
-                if (enable_random) {
-                    std::tie(hidden_states[i], topk_ids[i], topk_weights[i], x_fp8[i], y_fp8, out[i], o_vec[i], o_scales[i], o_scales_strided[i], silu_out[i], x_fp8_2[i], y_fp8_2, out_2[i]) = initialize_random_inputs(this->num_split_tokens[i], num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
-                } else {
-                    std::tie(out[i], o_vec[i], o_scales[i], o_scales_strided[i], silu_out[i], out_2[i]) = initialize_emptys(this->num_split_tokens[i], num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
-                }
                 get_deepep_low_latency_buffer(num_max_dispatch_tokens_per_rank, hidden_size, global_pg, num_groups, buffers[i], comm_stream);
             }
+    }
+
+    void get_split_metadata(std::vector<uint64_t> num_split_tokens = {}) {
+        if (num_split_tokens.size() == 0) { // average split
+            assert(num_tokens % num_splits == 0);
+            this->num_split_tokens = std::vector<uint64_t>(num_splits, num_tokens / num_splits);
+        } else { // manual split
+            assert(num_split_tokens.size() == num_splits);
+            assert(std::accumulate(num_split_tokens.begin(), num_split_tokens.end(), 0) == num_tokens);
+            this->num_split_tokens = num_split_tokens;
+        }
+        for (int i = 0; i < num_splits; i++) {
+            expected_ms[i] = std::max(1UL, (this->num_split_tokens[i] * num_topk + num_experts - 1) / num_experts * 2);
+            if (enable_random) {
+                std::tie(hidden_states[i], topk_ids[i], topk_weights[i], x_fp8[i], y_fp8, out[i], o_vec[i], o_scales[i], o_scales_strided[i], silu_out[i], x_fp8_2[i], y_fp8_2, out_2[i]) = initialize_random_inputs(this->num_split_tokens[i], num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
+            } else {
+                std::tie(out[i], o_vec[i], o_scales[i], o_scales_strided[i], silu_out[i], out_2[i]) = initialize_empty_intermediate(this->num_split_tokens[i], num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
+            }
+        }
     }
 
     void load_weights(std::tuple<torch::Tensor, torch::Tensor> w13_weight, std::tuple<torch::Tensor, torch::Tensor> w2_weight) {
@@ -248,6 +252,7 @@ public:
     }
 
     void load_inputs_and_split(torch::Tensor hidden_states_in, torch::Tensor topk_ids_in, torch::Tensor topk_weights_in) {
+        assert(this->num_split_tokens.size() > 0);
         hidden_states = custom_split(hidden_states_in, this->num_split_tokens, 0);
         topk_ids = custom_split(topk_ids_in, this->num_split_tokens, 0);
         topk_weights = custom_split(topk_weights_in, this->num_split_tokens, 0);
@@ -262,6 +267,7 @@ public:
     }
 
     void launch(LaunchMode launch_mode, std::shared_ptr<FUSEConfig>& fuse_config) {
+        assert(this->num_split_tokens.size() > 0);
         if (launch_mode == LaunchMode::SYNC_LAUNCH) _moe_sync(fuse_config);
         else if (launch_mode == LaunchMode::SCHED_LAUNCH) _moe_sched(fuse_config);
         else throw std::runtime_error("Invalid launch mode");

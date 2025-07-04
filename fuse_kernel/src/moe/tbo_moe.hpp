@@ -9,7 +9,7 @@ class TBOMoE : public BaseMoE {
 protected:
     std::shared_ptr<Buffer> buffer_b;
 
-    void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, bool enable_profile) {
+    void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, LaunchMode launch_mode, bool enable_profile) {
         cudaStream_t current_stream = at::cuda::getCurrentCUDAStream();
         assert(buffer_b != nullptr and hidden_states_b.defined());
         global_pg->barrier()->wait();
