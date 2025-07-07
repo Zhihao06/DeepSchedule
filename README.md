@@ -64,7 +64,7 @@ bash begin.sh
 ```shell
 source /mnt/data/nas/zhihao/zhl-sglang/bin/activate # your active env
 export LD_LIBRARY_PATH=/mnt/data/nas/zhihao/zhl-sglang/lib/python3.10/site-packages/torch/lib:$LD_LIBRARY_PATH # your torch lib path
-python setup.py bdist_whel
+python setup.py bdist_wheel
 ```
 ```
 pip install dist/*.whl
