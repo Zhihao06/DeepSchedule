@@ -15,12 +15,13 @@ if __name__ == '__main__':
     cxx_flags = ['-O3', '-Wno-deprecated-declarations', '-Wno-unused-variable',
                  '-Wno-sign-compare', '-Wno-reorder', '-Wno-attributes']
     nvcc_flags = ['-O3', '-Xcompiler', '-O3', '-rdc=true', '--ptxas-options=--register-usage-level=10']
-    include_dirs = [os.path.abspath('deep_ep/csrc'), os.path.abspath('deep_gemm/include'), os.path.abspath(f'{cuda_dir}/include'), os.path.abspath(f'{nvshmem_dir}/include'),
-        '/usr/local/lib/python3.10/dist-packages/torch/include', '/usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include']
+    include_dirs = [os.path.abspath('deep_ep/csrc'), os.path.abspath('deep_gemm/include'), os.path.abspath(f'{cuda_dir}/include'), os.path.abspath(f'{nvshmem_dir}/include')]
     sources = ['fuse_kernel/src/deep_fuse.cpp']
-    library_dirs = ['deep_ep/csrc/build', 'deep_gemm/kernels/build', 'fuse_kernel/build/src/ops']
+    library_dirs = [os.path.abspath('deep_ep/csrc/build'), os.path.abspath('deep_gemm/kernels/build'), os.path.abspath('fuse_kernel/build/src/ops')]
     extra_link_args = [
-        '-Wl,-Bstatic', '-l:libdeep_gemm_kernels.a', '-Wl,-Bdynamic', '-l:libfuse_silu_and_mul.so', '-l:libdeep_ep.so'
+        '-ldeep_gemm_kernels', 
+        f'-Wl,-rpath,{os.path.abspath("deep_ep/csrc/build")},-ldeep_ep', 
+        f'-Wl,-rpath,{os.path.abspath("fuse_kernel/build/src/ops")},-lfuse_silu_and_mul'
     ]
 
     # Disable aggressive PTX instructions
