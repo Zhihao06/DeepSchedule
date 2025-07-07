@@ -23,8 +23,6 @@ int64_t get_tma_aligned_size(int64_t size, int64_t elem_size) {
 torch::Tensor get_col_major_tma_aligned_tensor(torch::Tensor x, c10::optional<c10::cuda::CUDAStream> stream_opt = c10::nullopt) {
     TORCH_CHECK(x.dim() == 2 || x.dim() == 3, "Input tensor must be 2D or 3D");
 
-    if (x.is_cuda() && stream_opt.has_value()) at::cuda::setCurrentCUDAStream(stream_opt.value());
-
     bool remove_dim = false;
     int64_t m = x.size(-2);
     int64_t n = x.size(-1);
@@ -70,6 +68,14 @@ torch::Tensor get_col_major_tma_aligned_tensor(torch::Tensor x, c10::optional<c1
     } else {
         return aligned_x;
     }
+}
+
+torch::Tensor get_col_major_tma_aligned_tensor_wrapper(torch::Tensor x, c10::optional<c10::cuda::CUDAStream> stream_opt = c10::nullopt) {
+    c10::cuda::CUDAStream default_stream = at::cuda::getCurrentCUDAStream();
+    if (x.is_cuda() && stream_opt.has_value()) at::cuda::setCurrentCUDAStream(stream_opt.value());
+    torch::Tensor result = get_col_major_tma_aligned_tensor(x, stream_opt);
+    if (x.is_cuda() && stream_opt.has_value()) at::cuda::setCurrentCUDAStream(default_stream);
+    return result;
 }
 
 std::tuple<torch::Tensor, torch::Tensor> per_block_cast_to_fp8(torch::Tensor x) {
