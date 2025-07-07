@@ -35,6 +35,14 @@ void getCudaProperty() {
     std::cout << "Number of SMs: " << device_prop.multiProcessorCount << std::endl;
 }
 
+int getSmCount() {
+    int device_id;
+    cudaGetDevice(&device_id);
+    cudaDeviceProp device_prop;
+    cudaGetDeviceProperties(&device_prop, device_id);
+    return device_prop.multiProcessorCount;
+}
+
 void checkCudaMemoryUsage(const std::string& tag = "") {
     int device_id;
     cudaGetDevice(&device_id);

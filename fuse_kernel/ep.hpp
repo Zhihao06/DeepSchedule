@@ -57,25 +57,27 @@ void ep_moe(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uin
 
     if (mode == ModeType::NORMAL) {
         SequenceMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
-            global_pg->getSize(), global_pg);
-        moe.run(ep_sms, repeat_times, false/*enable_profile*/);
+            global_pg->getSize(), global_pg, true/*enable_random*/);
+        moe.run(ep_sms, LaunchMode::DEFAULT_LAUNCH, repeat_times, false/*enable_profile*/);
     } else if (mode == ModeType::OVERLAP) {
         OverlapMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
             global_pg->getSize(), global_pg);
-        moe.run(ep_sms, repeat_times, false/*enable_profile*/);
+        moe.run(ep_sms, LaunchMode::DEFAULT_LAUNCH, repeat_times, false/*enable_profile*/);
     } else if (mode == ModeType::TBO) {
         TBOMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
             global_pg->getSize(), global_pg);
-        moe.run(ep_sms, repeat_times, false/*enable_profile*/);
+        moe.run(ep_sms, LaunchMode::DEFAULT_LAUNCH, repeat_times, false/*enable_profile*/);
     } else if (mode == ModeType::MULTI_TOKEN) {
         if (num_splits.size() == 0) {
             MultiTokenMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
-                global_pg->getSize(), global_pg, 2, {}, launch_mode);
-                moe.run(ep_sms, repeat_times, false/*enable_profile*/);
+                global_pg->getSize(), global_pg, true/*enable_random*/, 2);
+                moe.get_split_metadata(2, {});
+                moe.run(ep_sms, launch_mode, repeat_times, false/*enable_profile*/);
         } else {
             MultiTokenMoE moe(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk,
-                global_pg->getSize(), global_pg, num_splits.size(), num_splits, launch_mode);
-                moe.run(ep_sms, repeat_times, false/*enable_profile*/);
+                global_pg->getSize(), global_pg, true/*enable_random*/, num_splits.size());
+                moe.get_split_metadata(num_splits.size(), num_splits);
+                moe.run(ep_sms, launch_mode, repeat_times, false/*enable_profile*/);
         }
     } else {
         throw std::runtime_error("Not supported mode");

@@ -12,21 +12,13 @@
 #include "kernels/configs.cuh"
 #include "kernels/exception.cuh"
 
-#define USE_CUDA_GRAPH
-
 namespace deep_ep {
 
-Buffer::Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_bytes, bool low_latency_mode, bool use_cuda_graph, 
-    std::optional<c10::cuda::CUDAStream> stream,
-    std::optional<bool> use_fp8, 
-    std::optional<int> num_experts,
-    std::optional<int> num_max_dispatch_tokens_per_rank, 
-    std::optional<int> hidden, 
-    std::optional<int64_t> num_tokens):
+Buffer::Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_bytes, bool low_latency_mode,
+    std::optional<c10::cuda::CUDAStream> stream):
         rank(rank), num_ranks(num_ranks),
         num_nvl_bytes(num_nvl_bytes), num_rdma_bytes(num_rdma_bytes),
         low_latency_mode(low_latency_mode),
-        use_cuda_graph(use_cuda_graph),
         comm_stream(at::cuda::getStreamFromPool(true)) {
     // Task fifo memory
     int64_t fifo_bytes = sizeof(int) * NUM_MAX_FIFO_SLOTS;
@@ -88,24 +80,6 @@ Buffer::Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_
         CUDA_CHECK(cudaMallocHost(&moe_recv_rdma_counter, sizeof(int), cudaHostAllocMapped));
         CUDA_CHECK(cudaHostGetDevicePointer(&moe_recv_rdma_counter_mapped, const_cast<int*>(moe_recv_rdma_counter), 0));
         *moe_recv_rdma_counter = -1;
-    }
-
-    // For Dispatch And Combine Tensor (For Cuda Graph)
-    if (use_cuda_graph) {
-        EP_HOST_ASSERT(num_experts.has_value());
-        EP_HOST_ASSERT(num_max_dispatch_tokens_per_rank.has_value());
-        EP_HOST_ASSERT(hidden.has_value());
-        EP_HOST_ASSERT(num_tokens.has_value());
-        EP_HOST_ASSERT(use_fp8.has_value());
-        int num_local_experts = num_experts.value() / num_ranks; 
-        auto num_scales = hidden.value() / 128;
-        packed_recv_x = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank.value(), hidden.value()},
-            torch::dtype(use_fp8.value() ? torch::kFloat8_e4m3fn: torch::kBFloat16).device(torch::kCUDA));
-        if (use_fp8.value()) packed_recv_x_scales = torch::empty({num_local_experts, num_scales, num_ranks * num_max_dispatch_tokens_per_rank.value()}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
-        packed_recv_src_info = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank.value()}, torch::dtype(torch::kInt32).device(torch::kCUDA));
-        packed_recv_layout_range = torch::empty({num_local_experts, num_ranks}, torch::dtype(torch::kInt64).device(torch::kCUDA));
-        packed_recv_count = torch::empty({num_local_experts}, torch::dtype(torch::kInt32).device(torch::kCUDA));
-        combined_x = torch::empty({num_tokens.value(), hidden.value()}, torch::dtype(torch::kBFloat16).device(torch::kCUDA));
     }
 
     // For Grid-level Sync
@@ -1081,19 +1055,17 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
         stream_wait(launch_stream, compute_stream);
 
     // Allocate packed tensors
-    if (!use_cuda_graph) {
-        packed_recv_x = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank, hidden},
-            x.options().dtype(use_fp8 ? torch::kFloat8_e4m3fn: torch::kBFloat16));
-        packed_recv_src_info = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank}, torch::dtype(torch::kInt32).device(torch::kCUDA));
-        packed_recv_layout_range = torch::empty({num_local_experts, num_ranks}, torch::dtype(torch::kInt64).device(torch::kCUDA));
-        packed_recv_count = torch::empty({num_local_experts}, torch::dtype(torch::kInt32).device(torch::kCUDA));
-    }
+    packed_recv_x = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank, hidden},
+        x.options().dtype(use_fp8 ? torch::kFloat8_e4m3fn: torch::kBFloat16));
+    packed_recv_src_info = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank}, torch::dtype(torch::kInt32).device(torch::kCUDA));
+    packed_recv_layout_range = torch::empty({num_local_experts, num_ranks}, torch::dtype(torch::kInt64).device(torch::kCUDA));
+    packed_recv_count = torch::empty({num_local_experts}, torch::dtype(torch::kInt32).device(torch::kCUDA));
 
     // Allocate column-majored scales
     float* packed_recv_x_scales_ptr = nullptr;
     if (use_fp8) {
         EP_HOST_ASSERT((num_ranks * num_max_dispatch_tokens_per_rank) % 4 == 0 and "TMA requires the number of tokens to be multiple of 4");
-        if (!use_cuda_graph) packed_recv_x_scales = torch::empty({num_local_experts, num_scales, num_ranks * num_max_dispatch_tokens_per_rank}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
+        packed_recv_x_scales = torch::empty({num_local_experts, num_scales, num_ranks * num_max_dispatch_tokens_per_rank}, torch::dtype(torch::kFloat32).device(torch::kCUDA));
         packed_recv_x_scales = torch::transpose(packed_recv_x_scales.value(), 1, 2);
         packed_recv_x_scales_ptr = packed_recv_x_scales->data_ptr<float>();
     }
@@ -1187,7 +1159,7 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
         EP_HOST_ASSERT(out->scalar_type() == x.scalar_type());
         combined_x = out.value();
     } else {
-        if (!use_cuda_graph) combined_x = torch::empty({num_combined_tokens, hidden}, x.options());
+        combined_x = torch::empty({num_combined_tokens, hidden}, x.options());
     }
 
     // Set Concurrent Grid Sync Counter
