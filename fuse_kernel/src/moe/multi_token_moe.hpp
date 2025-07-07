@@ -139,6 +139,8 @@ private:
     void _moe_sched(std::shared_ptr<FUSEConfig>& fuse_config) {
         c10::cuda::CUDAStream current_stream = at::cuda::getCurrentCUDAStream();
         global_pg->barrier()->wait();
+        stream_wait(compute_stream, current_stream);
+        stream_wait(comm_stream, current_stream);
 
         // Dispatch 0 issue
         _dispatch_op_a(comm_stream, fuse_config, 0);
@@ -227,7 +229,8 @@ public:
             }
     }
 
-    void get_split_metadata(std::vector<uint64_t> num_split_tokens = {}) {
+    void get_split_metadata(uint64_t num_tokens, std::vector<uint64_t> num_split_tokens = {}) {
+        this->num_tokens = num_tokens;
         if (num_split_tokens.size() == 0) { // average split
             assert(num_tokens % num_splits == 0);
             this->num_split_tokens = std::vector<uint64_t>(num_splits, num_tokens / num_splits);

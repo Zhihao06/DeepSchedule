@@ -50,8 +50,9 @@ void Tool::load_weights(std::tuple<torch::Tensor, torch::Tensor> w13_weight, std
     this->multi_token_moe->load_weights(w13_weight, w2_weight);
 }
 
-void Tool::get_split_metadata(std::vector<uint64_t> num_split_tokens) {
-    this->multi_token_moe->get_split_metadata(num_split_tokens);
+void Tool::get_split_metadata(uint64_t num_tokens, std::vector<uint64_t> num_split_tokens) {
+    this->num_tokens = num_tokens;
+    this->multi_token_moe->get_split_metadata(num_tokens, num_split_tokens);
 }
 
 void Tool::load_inputs_and_split(torch::Tensor hidden_states_in, torch::Tensor topk_ids_in, torch::Tensor topk_weights_in) {
