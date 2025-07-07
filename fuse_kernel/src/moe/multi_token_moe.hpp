@@ -37,7 +37,7 @@ private:
         auto out_size = static_cast<int64_t>(num_groups * m_max);
         auto out_view = out[index].view({out_size, -1});
         fuse_silu_and_mul_masked(silu_out[index], o_vec[index], o_scales[index], out_view, packed_recv_count[index], m_max, current_stream);
-        o_scales_strided[index] = get_col_major_tma_aligned_tensor(o_scales[index], current_stream);
+        o_scales_strided[index] = get_col_major_tma_aligned_tensor_wrapper(o_scales[index], current_stream);
 
         // FC2
         get_function_for_gemm(num_split_tokens[index], hidden_size, khidden / 2, num_groups, fuse_config->gemm_sms)(
@@ -69,7 +69,7 @@ private:
         auto out_size = static_cast<int64_t>(num_groups * m_max);
         auto out_view = out[index].view({out_size, -1});
         fuse_silu_and_mul_masked(silu_out[index], o_vec[index], o_scales[index], out_view, packed_recv_count[index], m_max, compute_stream);
-        o_scales_strided[index] = get_col_major_tma_aligned_tensor(o_scales[index], compute_stream);
+        o_scales_strided[index] = get_col_major_tma_aligned_tensor_wrapper(o_scales[index], compute_stream);
 
         // FC2
         _dispatch_op_b(comm_stream, fuse_config, index+1);
@@ -249,12 +249,12 @@ public:
         }
     }
 
-    void load_weights(std::tuple<torch::Tensor, torch::Tensor> w13_weight, std::tuple<torch::Tensor, torch::Tensor> w2_weight) {
-        y_fp8 = w13_weight;
-        y_fp8_2 = w2_weight;
+    void load_weights(const torch::Tensor& w13_weight_data, const torch::Tensor& w13_weight_scale, const torch::Tensor& w2_weight_data, const torch::Tensor& w2_weight_scale) {
+        y_fp8 = std::make_tuple(w13_weight_data, w13_weight_scale);
+        y_fp8_2 = std::make_tuple(w2_weight_data, w2_weight_scale);
     }
 
-    void load_inputs_and_split(torch::Tensor hidden_states_in, torch::Tensor topk_ids_in, torch::Tensor topk_weights_in) {
+    void load_inputs_and_split(const torch::Tensor& hidden_states_in, const torch::Tensor& topk_ids_in, const torch::Tensor& topk_weights_in) {
         assert(this->num_split_tokens.size() > 0);
         hidden_states = custom_split(hidden_states_in, this->num_split_tokens, 0);
         topk_ids = custom_split(topk_ids_in, this->num_split_tokens, 0);
@@ -271,6 +271,7 @@ public:
 
     void launch(LaunchMode launch_mode, std::shared_ptr<FUSEConfig>& fuse_config) {
         assert(this->num_split_tokens.size() > 0);
+        cudaDeviceSynchronize();
         if (launch_mode == LaunchMode::SYNC_LAUNCH) _moe_sync(fuse_config);
         else if (launch_mode == LaunchMode::SCHED_LAUNCH) _moe_sched(fuse_config);
         else throw std::runtime_error("Invalid launch mode");

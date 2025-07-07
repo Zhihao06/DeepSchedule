@@ -38,16 +38,15 @@ Tool::Tool(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint
     uint64_t num_topk, uint64_t world_size, pybind11::object& global_pg_nccl):
     num_experts(num_experts), num_max_dispatch_tokens_per_rank(num_max_dispatch_tokens_per_rank), khidden(khidden), hidden_size(hidden_size), num_tokens(num_tokens), 
     num_topk(num_topk), world_size(world_size) {
-        auto* pg_nccl = reinterpret_cast<ProcessGroupNCCL*>(global_pg_nccl.ptr());
-        this->global_pg = c10::intrusive_ptr<ProcessGroupNCCL>::reclaim(pg_nccl);
+        this->global_pg = global_pg_nccl.cast<c10::intrusive_ptr<::c10d::ProcessGroupNCCL>>();
 }
 
 void Tool::create_mode(int num_splits) {
     this->multi_token_moe = std::make_shared<MultiTokenMoE>(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk, world_size, global_pg, false/*enable_random*/, num_splits);
 }
 
-void Tool::load_weights(std::tuple<torch::Tensor, torch::Tensor> w13_weight, std::tuple<torch::Tensor, torch::Tensor> w2_weight) {
-    this->multi_token_moe->load_weights(w13_weight, w2_weight);
+void Tool::load_weights(const torch::Tensor& w13_weight_data, const torch::Tensor& w13_weight_scale, const torch::Tensor& w2_weight_data, const torch::Tensor& w2_weight_scale) {
+    this->multi_token_moe->load_weights(w13_weight_data, w13_weight_scale, w2_weight_data, w2_weight_scale);
 }
 
 void Tool::get_split_metadata(uint64_t num_tokens, std::vector<uint64_t> num_split_tokens) {
@@ -55,7 +54,7 @@ void Tool::get_split_metadata(uint64_t num_tokens, std::vector<uint64_t> num_spl
     this->multi_token_moe->get_split_metadata(num_tokens, num_split_tokens);
 }
 
-void Tool::load_inputs_and_split(torch::Tensor hidden_states_in, torch::Tensor topk_ids_in, torch::Tensor topk_weights_in) {
+void Tool::load_inputs_and_split(const torch::Tensor& hidden_states_in, const torch::Tensor& topk_ids_in, const torch::Tensor& topk_weights_in) {
     this->multi_token_moe->load_inputs_and_split(hidden_states_in, topk_ids_in, topk_weights_in);
 }
 
