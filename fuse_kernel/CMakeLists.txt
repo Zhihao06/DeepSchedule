@@ -56,7 +56,7 @@ if (NVCC_SUPPORTS_SM90)
     set(TORCH_CUDA_ARCH_LIST "8.6" CACHE STRING "Add arch tag 90a to NVCC" FORCE)
     list(APPEND CUDA_NVCC_FLAGS "-gencode;arch=compute_90a,code=sm_90a")
 endif()
-set(Torch_DIR "/usr/local/lib/python3.10/dist-packages/torch/share/cmake/Torch")
+set(Torch_DIR "/mnt/data/nas/zhihao/zhl-sglang/lib/python3.10/site-packages/torch/share/cmake/Torch")
 find_package(Torch REQUIRED)
 
 add_library(nvshmem ALIAS nvshmem::nvshmem)

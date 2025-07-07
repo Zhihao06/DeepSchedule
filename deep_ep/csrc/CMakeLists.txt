@@ -32,7 +32,7 @@ list(APPEND CUDA_NVCC_FLAGS "--ptxas-options=--verbose,--register-usage-level=10
 set(TORCH_CUDA_ARCH_LIST "9.0")
 find_package(CUDAToolkit REQUIRED)
 find_package(pybind11 REQUIRED)
-set(Torch_DIR "/usr/local/lib/python3.10/dist-packages/torch/share/cmake/Torch")
+set(Torch_DIR "/mnt/data/nas/zhihao/zhl-sglang/lib/python3.10/site-packages/torch/share/cmake/Torch")
 find_package(Torch REQUIRED)
 find_package(NVSHMEM REQUIRED HINTS ${NVSHMEM_ROOT_DIR}/lib/cmake/nvshmem)
 
