@@ -19,7 +19,6 @@ private:
     std::vector<torch::Tensor> combine_x;
     std::vector<std::optional<EventHandle>> event_cs;
     std::vector<std::optional<std::function<void()>>> hook_cs;
-    bool enable_random;
 
     void _compute_op(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
         // FC1
@@ -192,8 +191,8 @@ public:
 
     MultiTokenMoE(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, 
         uint64_t num_topk, uint64_t world_size, c10::intrusive_ptr<ProcessGroupNCCL>& global_pg, bool enable_random = true, uint64_t num_splits = 2): 
-        BaseMoE(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk, world_size, global_pg),
-        num_splits(num_splits), enable_random(enable_random), comm_stream(at::cuda::getStreamFromPool(true)), compute_stream(at::cuda::getStreamFromPool(true)) {
+        BaseMoE(num_experts, num_max_dispatch_tokens_per_rank, khidden, hidden_size, num_tokens, num_topk, world_size, global_pg, enable_random),
+        num_splits(num_splits), comm_stream(at::cuda::getStreamFromPool(true)), compute_stream(at::cuda::getStreamFromPool(true)) {
             assert(num_splits > 1);
 
             // get default variables
