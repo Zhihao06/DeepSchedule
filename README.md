@@ -72,5 +72,5 @@ pip install dist/*.whl
 
 ##### 在主函数中运行
 ```python
-import deep_fuse_cpp
+import deep_fuse
 ```

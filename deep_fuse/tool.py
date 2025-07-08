@@ -20,16 +20,19 @@ class Tool:
         self.runtime.create_mode(num_splits)
 
     def get_metadata(self, mode: str, num_tokens: int, num_split_tokens: List[int]) -> None:
-        self.runtime.get_metadata(mode, tokens, split_tokens)
+        self.runtime.get_metadata(mode, num_tokens, num_split_tokens)
 
-    def load_inputs(self, mode: str, w13_weight: Tuple[torch.Tensor, torch.Tensor], w2_weight: Tuple[torch.Tensor, torch.Tensor]) -> None:
-        self.runtime.load_inputs(mode, w13_weight[0], w13_weight[1], w2_weight[0], w2_weight[1])
+    def load_inputs(self, mode: str, hidden_states_in: torch.Tensor, topk_ids_in: torch.Tensor, topk_weights_in: torch.Tensor) -> None:
+        self.runtime.load_inputs(mode, hidden_states_in, topk_ids_in, topk_weights_in)
+
+    def load_weights(self, w13_weight: Tuple[torch.Tensor, torch.Tensor], w2_weight: Tuple[torch.Tensor, torch.Tensor]) -> None:
+        self.runtime.load_weights(w13_weight[0], w13_weight[1], w2_weight[0], w2_weight[1])
 
     def launch(self, mode: str, launch_mode: str, deepep_sms: int) -> None:
         self.runtime.launch(mode, launch_mode, deepep_sms)
 
-    def get_merged_outputs(self, mode: str) -> torch.Tensor:
-        self.runtime.get_merged_outputs(mode)
+    def get_merged_output(self, mode: str) -> torch.Tensor:
+        return self.runtime.get_merged_output(mode)
 
     def low_latency_dispatch_interface(self, mode: str, deepep_sms: int) -> Tuple[Union[Tuple[torch.Tensor, torch.Tensor], torch.Tensor], torch.Tensor, int]:
         packed_recv_x, packed_recv_x_scales, packed_recv_count, expected_m = self.runtime.low_latency_dispatch_interface(mode, deepep_sms)

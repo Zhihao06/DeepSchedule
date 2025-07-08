@@ -1,3 +1,3 @@
 import torch
 
-from .FUSE import Tool
+from .tool import Tool

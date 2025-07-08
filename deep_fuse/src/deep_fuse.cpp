@@ -35,7 +35,7 @@ using namespace c10d;
 namespace deep_fuse { 
 
 Tool::Tool(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, 
-    uint64_t num_topk, uint64_t world_size, pybind11::object& global_pg_nccl):
+    uint64_t num_topk, uint64_t world_size, const pybind11::object& global_pg_nccl):
     num_experts(num_experts), num_max_dispatch_tokens_per_rank(num_max_dispatch_tokens_per_rank), khidden(khidden), hidden_size(hidden_size), num_tokens(num_tokens), 
     num_topk(num_topk), world_size(world_size) {
         this->global_pg = global_pg_nccl.cast<c10::intrusive_ptr<::c10d::ProcessGroupNCCL>>();
@@ -51,7 +51,7 @@ void Tool::load_weights(const torch::Tensor& w13_weight_data, const torch::Tenso
     this->multi_token_moe->load_weights(w13_weight_data, w13_weight_scale, w2_weight_data, w2_weight_scale);
 }
 
-void Tool::get_metadata(std::string mode, uint64_t num_tokens, std::vector<uint64_t> num_split_tokens) {
+void Tool::get_metadata(const std::string& mode, uint64_t num_tokens, const std::vector<uint64_t>& num_split_tokens) {
     this->num_tokens = num_tokens;
     if (mode == "sequence") {
         this->sequence_moe->get_metadata(num_tokens);
@@ -62,13 +62,13 @@ void Tool::get_metadata(std::string mode, uint64_t num_tokens, std::vector<uint6
     }
 }
 
-void Tool::load_inputs(std::string mode, const torch::Tensor& hidden_states_in, const torch::Tensor& topk_ids_in, const torch::Tensor& topk_weights_in) {
+void Tool::load_inputs(const std::string& mode, const torch::Tensor& hidden_states_in, const torch::Tensor& topk_ids_in, const torch::Tensor& topk_weights_in) {
     if (mode == "sequence") this->sequence_moe->load_inputs(hidden_states_in, topk_ids_in, topk_weights_in);
     else if (mode == "multi_token") this->multi_token_moe->load_inputs_and_split(hidden_states_in, topk_ids_in, topk_weights_in);
     else throw std::invalid_argument("Invalid mode");   
 }
 
-void Tool::launch(std::string mode, std::string launch_mode, int deepep_sms) {
+void Tool::launch(const std::string& mode, const std::string& launch_mode, int deepep_sms) {
     std::shared_ptr<FUSEConfig> fuse_config = std::make_shared<FUSEConfig>(getSmCount() - deepep_sms, deepep_sms);
     if (mode == "sequence") {
         this->sequence_moe->launch(fuse_config);
@@ -83,19 +83,19 @@ void Tool::launch(std::string mode, std::string launch_mode, int deepep_sms) {
     }
 }
 
-torch::Tensor Tool::get_merged_output(std::string mode) {
+torch::Tensor Tool::get_merged_output(const std::string& mode) {
     if (mode == "sequence") return this->sequence_moe->get_merged_output();
     else if (mode == "multi_token") return this->multi_token_moe->get_merged_output();
     else throw std::invalid_argument("Invalid mode");
 }
 
-std::tuple<torch::Tensor, std::optional<torch::Tensor>, torch::Tensor, uint64_t> Tool::low_latency_dispatch_interface(std::string mode, int deepep_sms) {
+std::tuple<torch::Tensor, std::optional<torch::Tensor>, torch::Tensor, uint64_t> Tool::low_latency_dispatch_interface(const std::string& mode, int deepep_sms) {
     std::shared_ptr<FUSEConfig> fuse_config = std::make_shared<FUSEConfig>(getSmCount() - deepep_sms, deepep_sms);
     if (mode == "sequence") return this->sequence_moe->low_latency_dispatch_interface(fuse_config);
     else throw std::invalid_argument("Invalid mode");
 }
 
-torch::Tensor Tool::low_latency_combine_interface(std::string mode, int deepep_sms) {
+torch::Tensor Tool::low_latency_combine_interface(const std::string& mode, int deepep_sms) {
     std::shared_ptr<FUSEConfig> fuse_config = std::make_shared<FUSEConfig>(getSmCount() - deepep_sms, deepep_sms);
     if (mode == "sequence") return this->sequence_moe->low_latency_combine_interface(fuse_config);
     else throw std::invalid_argument("Invalid mode");
