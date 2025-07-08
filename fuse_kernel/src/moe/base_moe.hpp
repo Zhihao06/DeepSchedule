@@ -9,6 +9,7 @@ using namespace c10d;
 class BaseMoE {
 protected:
     uint64_t num_tokens, num_topk, num_groups, num_experts, m_max, hidden_size, khidden, num_max_dispatch_tokens_per_rank, expected_m, world_size;
+    bool enable_random;
 
     virtual void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, LaunchMode launch_mode, bool enable_profile) = 0;
 
@@ -23,9 +24,9 @@ public:
     std::shared_ptr<Buffer> buffer;
 
     BaseMoE(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, 
-        uint64_t num_topk, uint64_t world_size, c10::intrusive_ptr<ProcessGroupNCCL>& global_pg):
+        uint64_t num_topk, uint64_t world_size, c10::intrusive_ptr<ProcessGroupNCCL>& global_pg, bool enable_random = true):
         num_experts(num_experts), num_max_dispatch_tokens_per_rank(num_max_dispatch_tokens_per_rank), 
-        khidden(khidden), hidden_size(hidden_size), num_tokens(num_tokens), num_topk(num_topk), 
+        khidden(khidden), hidden_size(hidden_size), num_tokens(num_tokens), num_topk(num_topk), enable_random(enable_random),
         world_size(world_size), global_pg(global_pg) {
         num_groups = num_experts / world_size;
         expected_m = std::max(1UL, (num_tokens * num_topk + num_experts - 1) / num_experts * 2);
