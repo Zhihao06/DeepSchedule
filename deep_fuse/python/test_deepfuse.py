@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 import os
 import torch.multiprocessing as mp
-import deep_fuse_cpp
+import deep_fuse
 
 NUM_EXPERTS, NUM_MAX_DISPATCH_TOKENS_PER_RANK, KHIDDEN, HIDDEN_SIZE, NUM_TOKENS, NUM_TOPK = 128, 1024, 3072, 4096, 512, 8
 
@@ -23,7 +23,7 @@ def test_deepfuse(rank, world_size):
     backend = dist.group.WORLD._get_backend(torch.device("cuda"))
     print("backend rank", backend.rank())
     torch.cuda.set_device(backend.rank())
-    runtime = deep_fuse_cpp.Tool(
+    runtime = deep_fuse.Tool(
         NUM_EXPERTS, NUM_MAX_DISPATCH_TOKENS_PER_RANK, KHIDDEN, HIDDEN_SIZE, NUM_TOKENS, NUM_TOPK, 
         world_size, dist.group.WORLD._get_backend(torch.device("cuda"))
     )
@@ -33,11 +33,11 @@ def test_deepfuse(rank, world_size):
     hidden_states = torch.randn(NUM_TOKENS, HIDDEN_SIZE, dtype=torch.bfloat16, device="cuda")
 
     runtime.create_mode(4) # num_splits
-    runtime.load_weights(w13_weight_fp8[0], w13_weight_fp8[1], w2_weight_fp8[0], w2_weight_fp8[1])
-    runtime.get_split_metadata(512, [128, 128, 128, 128])
-    runtime.load_inputs_and_split(hidden_states, topk_idx, topk_weights)
-    runtime.launch("sched", 20)
-    final_hidden_states = runtime.get_merged_output()
+    runtime.load_weights(w13_weight_fp8, w2_weight_fp8)
+    runtime.get_metadata("multi_token", 512, [128, 128, 128, 128])
+    runtime.load_inputs("multi_token", hidden_states, topk_idx, topk_weights)
+    runtime.launch("multi_token", "sched", 20)
+    final_hidden_states = runtime.get_merged_output("multi_token")
 
     torch.distributed.barrier()
     dist.destroy_process_group()

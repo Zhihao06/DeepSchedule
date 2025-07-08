@@ -105,7 +105,7 @@ public:
 
     torch::Tensor get_merged_output() {
         cudaDeviceSynchronize();
-        torch::Tensor final_output = torch::cat(combine_x, 0);
+        torch::Tensor final_output = combine_x;
         assert(final_output.size(0) == num_tokens);
         assert(final_output.size(1) == hidden_size);
         return final_output;
@@ -114,5 +114,21 @@ public:
     void launch(std::shared_ptr<FUSEConfig>& fuse_config) {
         cudaDeviceSynchronize();
         _moe_core(fuse_config, LaunchMode::DEFAULT_LAUNCH, false);
+    }
+
+    std::tuple<torch::Tensor, std::optional<torch::Tensor>, torch::Tensor, uint64_t>
+    low_latency_dispatch_interface(std::shared_ptr<FUSEConfig>& fuse_config) {
+        c10::cuda::CUDAStream current_stream = at::cuda::getCurrentCUDAStream();
+        _dispatch_op_a(current_stream, fuse_config);
+        _dispatch_op_b(current_stream, fuse_config);
+        return std::make_tuple(packed_recv_x, packed_recv_x_scales, packed_recv_count, expected_m);
+    }
+
+    torch::Tensor
+    low_latency_combine_interface(std::shared_ptr<FUSEConfig>& fuse_config) {
+        c10::cuda::CUDAStream current_stream = at::cuda::getCurrentCUDAStream();
+        _combine_op_a(current_stream, fuse_config);
+        _combine_op_b(current_stream, fuse_config);
+        return combine_x;
     }
 };

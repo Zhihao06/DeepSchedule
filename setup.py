@@ -16,12 +16,12 @@ if __name__ == '__main__':
                  '-Wno-sign-compare', '-Wno-reorder', '-Wno-attributes']
     nvcc_flags = ['-O3', '-Xcompiler', '-O3', '-rdc=true', '--ptxas-options=--register-usage-level=10']
     include_dirs = [os.path.abspath('deep_ep/csrc'), os.path.abspath('deep_gemm/include'), os.path.abspath(f'{cuda_dir}/include'), os.path.abspath(f'{nvshmem_dir}/include')]
-    sources = ['fuse_kernel/src/deep_fuse.cpp']
-    library_dirs = [os.path.abspath('deep_ep/csrc/build'), os.path.abspath('deep_gemm/kernels/build'), os.path.abspath('fuse_kernel/build/src/ops')]
+    sources = ['deep_fuse/src/deep_fuse.cpp']
+    library_dirs = [os.path.abspath('deep_ep/csrc/build'), os.path.abspath('deep_gemm/kernels/build'), os.path.abspath('deep_fuse/build/src/ops')]
     extra_link_args = [
         '-ldeep_gemm_kernels', 
         f'-Wl,-rpath,{os.path.abspath("deep_ep/csrc/build")},-ldeep_ep', 
-        f'-Wl,-rpath,{os.path.abspath("fuse_kernel/build/src/ops")},-lfuse_silu_and_mul'
+        f'-Wl,-rpath,{os.path.abspath("deep_fuse/build/src/ops")},-lfuse_silu_and_mul'
     ]
 
     # Disable aggressive PTX instructions
@@ -49,6 +49,9 @@ if __name__ == '__main__':
     setuptools.setup(
         name='deep_fuse',
         version='1.0.0' + revision,
+        packages=setuptools.find_packages(
+            include=['deep_fuse']
+        ),
         ext_modules=[
             CUDAExtension(
                 name='deep_fuse_cpp',

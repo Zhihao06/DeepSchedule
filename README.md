@@ -6,7 +6,7 @@ DeepFUSE 是一个基于DeepEP和DeepGEMM的计算通信overlap工具，用于�
 ## 使用方式
 
 ### Tips
-需要先查看`deep_ep/csrc/CMakeLists.txt`和`deep_gemm/include/CMakeLists.txt`和`fuse_kernel/CMakeLists.txt`下`Torch_DIR`变量，改成自己环境对应的torch路径。
+需要先查看`deep_ep/csrc/CMakeLists.txt`和`deep_gemm/include/CMakeLists.txt`和`deep_fuse/CMakeLists.txt`下`Torch_DIR`变量，改成自己环境对应的torch路径。
 
 ### 1. 编译DeepEP
 
@@ -33,7 +33,7 @@ if __name__ == "__main__":
 ```
 该函数会生成两部分代码：
 - `deep_gemm/kernels/*.cu`：使用不同模板参数生成的DeepGEMM kernels
-- `fuse_kernel/src/gemm_gen.hpp`：主函数调用DeepGEMM的头文件
+- `deep_fuse/src/gemm_gen.hpp`：主函数调用DeepGEMM的头文件
 
 #### b.编译生成静态链接
 这部分会比较耗时
@@ -46,15 +46,15 @@ make
 
 ### 3. 编译DeepFUSE
 ```shell
-mkdir -p fuse_kernel/build
-cd fuse_kernel/build
+mkdir -p deep_fuse/build
+cd deep_fuse/build
 cmake ..
 make
 ```
 
 #### a. C++ 方式运行
 ```shell
-cd fuse_kernel
+cd deep_fuse
 bash begin.sh
 ```
 
