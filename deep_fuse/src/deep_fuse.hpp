@@ -28,6 +28,6 @@ public:
     void launch(const std::string& mode, const std::string& launch_mode, int deepep_sms);
     torch::Tensor get_merged_output(const std::string& mode);
     std::tuple<torch::Tensor, std::optional<torch::Tensor>, torch::Tensor, uint64_t> low_latency_dispatch_interface(const std::string& mode, int deepep_sms);
-    torch::Tensor low_latency_combine_interface(const std::string& mode, int deepep_sms);
+    torch::Tensor low_latency_combine_interface(const std::string& mode, const torch::Tensor& compute_result, int deepep_sms);
 };
 }

@@ -125,8 +125,9 @@ public:
     }
 
     torch::Tensor
-    low_latency_combine_interface(std::shared_ptr<FUSEConfig>& fuse_config) {
+    low_latency_combine_interface(const torch::Tensor& compute_result, std::shared_ptr<FUSEConfig>& fuse_config) {
         c10::cuda::CUDAStream current_stream = at::cuda::getCurrentCUDAStream();
+        out_2 = compute_result;
         _combine_op_a(current_stream, fuse_config);
         _combine_op_b(current_stream, fuse_config);
         return combine_x;

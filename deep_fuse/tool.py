@@ -38,5 +38,5 @@ class Tool:
         packed_recv_x, packed_recv_x_scales, packed_recv_count, expected_m = self.runtime.low_latency_dispatch_interface(mode, deepep_sms)
         return (packed_recv_x, packed_recv_x_scales) if packed_recv_x_scales is not None else packed_recv_x, packed_recv_count, expected_m
 
-    def low_latency_combine_interface(self, mode: str, deepep_sms: int) -> torch.Tensor:
-        return self.runtime.low_latency_combine_interface(mode, deepep_sms)
+    def low_latency_combine_interface(self, mode: str, compute_result: torch.Tensor, deepep_sms: int) -> torch.Tensor:
+        return self.runtime.low_latency_combine_interface(mode, compute_result, deepep_sms)

@@ -95,9 +95,9 @@ std::tuple<torch::Tensor, std::optional<torch::Tensor>, torch::Tensor, uint64_t>
     else throw std::invalid_argument("Invalid mode");
 }
 
-torch::Tensor Tool::low_latency_combine_interface(const std::string& mode, int deepep_sms) {
+torch::Tensor Tool::low_latency_combine_interface(const std::string& mode, const torch::Tensor& compute_result, int deepep_sms) {
     std::shared_ptr<FUSEConfig> fuse_config = std::make_shared<FUSEConfig>(getSmCount() - deepep_sms, deepep_sms);
-    if (mode == "sequence") return this->sequence_moe->low_latency_combine_interface(fuse_config);
+    if (mode == "sequence") return this->sequence_moe->low_latency_combine_interface(compute_result, fuse_config);
     else throw std::invalid_argument("Invalid mode");
 }
 }
