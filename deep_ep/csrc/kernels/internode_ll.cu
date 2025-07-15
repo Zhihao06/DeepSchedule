@@ -80,6 +80,8 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
     const auto sub_warp_id = warp_id % kNumWarpsPerGroup;
     const auto responsible_expert_idx = sm_id * kNumWarpGroups + warp_group_id;
 
+    // if (thread_id == 0 and sm_id == 0) printf("kernel Passed: %s, %d. \n", __FILE__, __LINE__);
+
     // FP8 staffs
     constexpr int kNumPerChannels = 128;
     constexpr float kFP8Margin = 1e-4, kFP8Amax = 448, kFP8AmaxInv = 1.0f / 448.0f;
@@ -93,6 +95,8 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
     const size_t num_bytes_per_msg = sizeof(int4) + (kUseFP8 ? (kHidden + num_scales * sizeof(float)) : (kHidden * sizeof(nv_bfloat16)));
     const size_t num_int4_per_msg = num_bytes_per_msg / sizeof(int4);
     EP_DEVICE_ASSERT(num_bytes_per_msg % sizeof(int4) == 0);
+
+    // if (thread_id == 0 and sm_id == 0) printf("kernel Passed: %s, %d. \n", __FILE__, __LINE__);
 
     // Sending phase
     if ((phases & LOW_LATENCY_SEND_PHASE) == 0)
@@ -228,6 +232,8 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
     }
     __syncthreads();
 
+    // if (thread_id == 0 and sm_id == 0) printf("kernel Passed: %s, %d. \n", __FILE__, __LINE__);
+
     // Issue count sends
     if (responsible_expert_idx < num_experts and sub_warp_id == 0 and lane_id == 0) {
         const auto dst_rank = responsible_expert_idx / num_local_experts;
@@ -241,6 +247,7 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
         } else {
             st_na_release(rdma_recv_count + dst_expert_local_idx * num_ranks + rank, -num_tokens_sent - 1);
         }
+        if (sub_warp_id == 0 and lane_id == 0) printf("[tid: %d, sm: %d][dst_rank: %d, dst_expert_local_idx: %d]kernel Passed: %s, %d. Get rdma count: %d. Add %d. \n", thread_id, sm_id, dst_rank, dst_expert_local_idx, __FILE__, __LINE__, num_tokens_sent, -num_tokens_sent - 1);
 
         // Clean workspace for next use
         atomic_counter_per_expert[responsible_expert_idx] = 0;
@@ -252,6 +259,8 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
     }
     __syncwarp();
 
+    if (thread_id == 0 and sm_id == 0) printf("kernel Passed: %s, %d. \n", __FILE__, __LINE__);
+
     // Receiving phase
     LOW_LATENCY_DISPATCH_RECV:
     if ((phases & LOW_LATENCY_RECV_PHASE) == 0)
@@ -260,12 +269,15 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
     // For send-and-recv kernels, we need a grid sync for making `packed_recv_count` visible
     if (phases & LOW_LATENCY_SEND_PHASE)
         // cg::this_grid().sync();
+        __syncthreads();
         if (thread_id == 0) {
             int arrived_sms = -1;
             atomicAdd(grid_sync_counter, 1);
             while((arrived_sms = ld_acquire_global(grid_sync_counter)) != num_sms);
         }
         __syncthreads();
+
+    if (sub_warp_id == 1 and lane_id == 0) printf("kernel Passed: %s, %d. \n", __FILE__, __LINE__);
 
     // Receiving and packing
     if (responsible_expert_idx < num_experts) {
@@ -283,6 +295,8 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
         // Shared between sub-warps in warp groups
         __shared__ int shared_num_recv_tokens[kNumWarpGroups], shared_recv_token_begin_idx[kNumWarpGroups];
 
+        if (sub_warp_id == 1 and lane_id == 0) printf("[tid: %d, sm: %d]kernel Passed: %s, %d. \n", thread_id, sm_id, __FILE__, __LINE__);
+
         // Wait tokens to arrive
         // NOTES: using sub-warp 1 to overlap with sub-warp 0
         int num_recv_tokens, recv_token_begin_idx;
@@ -298,6 +312,8 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
         asm volatile("bar.sync %0, %1;" :: "r"(warp_group_id + 2), "r"(kNumWarpsPerGroup * 32));
         num_recv_tokens = shared_num_recv_tokens[warp_group_id];
         recv_token_begin_idx = shared_recv_token_begin_idx[warp_group_id];
+
+        if (sub_warp_id == 1 and lane_id == 0) printf("[tid: %d, sm: %d]kernel Passed: %s, %d. Recv Tokens: %d. \n", thread_id, sm_id, __FILE__, __LINE__, num_recv_tokens);
 
         // Copy tokens
         EP_DEVICE_ASSERT(num_scales <= 64);
@@ -326,6 +342,7 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
             }
         }
     }
+    if (sub_warp_id == 1 and lane_id == 0) printf("[tid: %d, sm: %d]kernel Passed: %s, %d. \n", thread_id, sm_id, __FILE__, __LINE__);
 }
 
 void dispatch(void* packed_recv_x, float* packed_recv_x_scales,
@@ -484,6 +501,8 @@ combine(void* combined_x,
 	        }
         }
 
+        if (sub_warp_id == 0 and lane_id == 0) printf("[tid: %d, sm: %d] [global_expert: %d dst_rank: %d] kernel Passed: %s, %d. \n", thread_id, sm_id, global_expert_idx, dst_rank, __FILE__, __LINE__);
+
         // Issue IBGDA send
         for (int token_idx = offset + sub_warp_id; token_idx < offset + num_tokens_to_send; token_idx += kNumWarpsPerGroup) {
             const auto x_int4 = local_x + token_idx * hidden_bf16_int4;
@@ -510,6 +529,7 @@ combine(void* combined_x,
                 }
                 nvshmemi_ibgda_put_nbi_warp(dst_ptr, buf_ptr, num_bytes_per_slot, dst_rank, local_expert_idx, lane_id, token_idx - offset);
             }
+            if (sub_warp_id == 0 and lane_id == 0) printf("[tid: %d, sm: %d] [global_expert: %d dst_rank: %d] kernel Passed: %s, %d. \n", thread_id, sm_id, global_expert_idx, dst_rank, __FILE__, __LINE__);
         }
 
         // Put finishing flag
@@ -523,6 +543,7 @@ combine(void* combined_x,
                 st_na_release(rdma_recv_flag + global_expert_idx, 1);
             }
             atomic_add_release_global(atomic_clean_flag, -1);
+            printf("[tid: %d, sm: %d] [global_expert: %d dst_rank: %d] kernel Passed: %s, %d. \n", thread_id, sm_id, global_expert_idx, dst_rank, __FILE__, __LINE__);
         }
         __syncwarp();
     }
@@ -532,18 +553,25 @@ combine(void* combined_x,
     if ((phases & LOW_LATENCY_RECV_PHASE) == 0)
         return;
 
+    if (sub_warp_id == 0 and lane_id == 0) printf("[tid: %d, sm: %d]kernel Passed: %s, %d. \n", thread_id, sm_id, __FILE__, __LINE__);
+
     // Wait all ranks to arrive and notify PCIe usage
     if (responsible_expert_idx < num_experts) {
         EP_STATIC_ASSERT(kNumWarpsPerGroup > 1, "Invalid number of warps per group");
         if (sub_warp_id == 0 and lane_id == 0)
             while (ld_acquire_sys_global(rdma_recv_flag + responsible_expert_idx) == 0);
+
+        if (sub_warp_id == 0 and lane_id == 0) printf("[tid: %d, sm: %d]kernel Passed: %s, %d. \n", thread_id, sm_id, __FILE__, __LINE__);
     }
     // cg::this_grid().sync();
+    __syncthreads();
     int arrived_sms = -1;
     if (thread_id == 0) {
         atomicAdd(grid_sync_counter, 1);
         while((arrived_sms = ld_acquire_global(grid_sync_counter)) != num_sms);
     }
+
+    if (sub_warp_id == 0 and lane_id == 0) printf("[tid: %d, sm: %d]kernel Passed: %s, %d. \n", thread_id, sm_id, __FILE__, __LINE__);
     __syncthreads();
 
     // Reduce tokens with FP8 cast

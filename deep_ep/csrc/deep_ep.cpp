@@ -12,6 +12,14 @@
 #include "kernels/configs.cuh"
 #include "kernels/exception.cuh"
 
+// DEBUG file
+#ifndef DEBUG_FILE
+#define DEBUG_FILE() \
+    do { \
+        printf("[Rank: %s] Test Passed: %s:%d. \n", std::getenv("RANK"), __FILE__, __LINE__); \
+    } while (0)
+#endif
+
 namespace deep_ep {
 
 Buffer::Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_bytes, bool low_latency_mode,
@@ -1035,15 +1043,21 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
     EP_HOST_ASSERT(topk_idx.scalar_type() == torch::kInt64);
     EP_HOST_ASSERT(num_experts % num_ranks == 0);
 
+    DEBUG_FILE();
+
     auto num_tokens = static_cast<int>(x.size(0)), hidden = static_cast<int>(x.size(1));
     auto num_scales = hidden / 128, num_topk = static_cast<int>(topk_idx.size(1));
     int num_local_experts = num_experts / num_ranks;
+
+    DEBUG_FILE();
 
     // Buffer control
     LowLatencyLayout layout(rdma_buffer_ptr, num_max_dispatch_tokens_per_rank, hidden, num_ranks, num_experts);
     EP_HOST_ASSERT(layout.total_bytes <= num_rdma_bytes);
     auto buffer = layout.buffers[low_latency_buffer_idx];
     auto next_buffer = layout.buffers[low_latency_buffer_idx ^= 1];
+
+    DEBUG_FILE();
 
     // Wait previous tasks to be finished
     // NOTES: the hook mode will always use the default stream
@@ -1054,12 +1068,16 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
     if (not return_recv_hook)
         stream_wait(launch_stream, compute_stream);
 
+    DEBUG_FILE();
+
     // Allocate packed tensors
     packed_recv_x = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank, hidden},
         x.options().dtype(use_fp8 ? torch::kFloat8_e4m3fn: torch::kBFloat16));
     packed_recv_src_info = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank}, torch::dtype(torch::kInt32).device(torch::kCUDA));
     packed_recv_layout_range = torch::empty({num_local_experts, num_ranks}, torch::dtype(torch::kInt64).device(torch::kCUDA));
     packed_recv_count = torch::empty({num_local_experts}, torch::dtype(torch::kInt32).device(torch::kCUDA));
+
+    DEBUG_FILE();
 
     // Allocate column-majored scales
     float* packed_recv_x_scales_ptr = nullptr;
@@ -1069,6 +1087,8 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
         packed_recv_x_scales = torch::transpose(packed_recv_x_scales.value(), 1, 2);
         packed_recv_x_scales_ptr = packed_recv_x_scales->data_ptr<float>();
     }
+
+    DEBUG_FILE();
 
     // Set Concurrent Grid Sync Counter
     cudaMemsetAsync(grid_sync_counter, 0, sizeof(int), launch_stream);
@@ -1089,6 +1109,8 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
     };
     launcher(return_recv_hook ? LOW_LATENCY_SEND_PHASE : (LOW_LATENCY_SEND_PHASE | LOW_LATENCY_RECV_PHASE));
 
+    DEBUG_FILE();
+
     // Wait streams
     std::optional<EventHandle> event;
     if (async) {
@@ -1099,10 +1121,14 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
         stream_wait(compute_stream, launch_stream);
     }
 
+    DEBUG_FILE();
+
     // Receiver callback
     std::optional<std::function<void()>> recv_hook = std::nullopt;
     if (return_recv_hook)
         recv_hook = [=]() { launcher(LOW_LATENCY_RECV_PHASE); };
+
+    DEBUG_FILE();
 
     // Return values
     return {packed_recv_x, packed_recv_x_scales, packed_recv_count, packed_recv_src_info, packed_recv_layout_range, event, recv_hook};

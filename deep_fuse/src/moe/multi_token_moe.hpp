@@ -93,19 +93,23 @@ private:
     }
 
     void _dispatch_op_a(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
+        DEBUG_VAR("[ _dispatch_op_a ] ", index, ": ", hidden_states[index].sizes(), " ", topk_ids[index].sizes());
         std::tie(packed_recv_x[index], packed_recv_x_scales[index], packed_recv_count[index], packed_recv_src_info[index], packed_recv_layout_range[index], events[index], hooks[index]) = buffers[index]->low_latency_dispatch(hidden_states[index], topk_ids[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*async_finish*/, true/*return_recv_hook*/, current_stream);
     }
 
     void _dispatch_op_b(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
         if (hooks[index].has_value()) hooks[index].value()();
+        DEBUG_VAR("[ _dispatch_op_b ] ", index, ": ", packed_recv_x[index].sizes(), " ", packed_recv_x_scales[index].value().sizes(), " ", packed_recv_count[index].sizes(), " ", packed_recv_src_info[index].sizes(), " ", packed_recv_layout_range[index].sizes());
     }
 
     void _combine_op_a(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
+        DEBUG_VAR("[ _combine_op_a ] ", index, ": ", out_2[index].view(packed_recv_x[index].sizes()).sizes(), " ", topk_ids[index].sizes(), " ", topk_weights[index].sizes(), " ", packed_recv_src_info[index].sizes(), " ", packed_recv_layout_range[index].sizes());
         std::tie(combine_x[index], event_cs[index], hook_cs[index]) = buffers[index]->low_latency_combine(out_2[index].view(packed_recv_x[index].sizes()), topk_ids[index], topk_weights[index], packed_recv_src_info[index], packed_recv_layout_range[index], num_max_dispatch_tokens_per_rank, num_experts, fuse_config->ep_sms, true/*use_fp8*/, false/*zero_copy*/, false/*async_finish*/, true/*return_recv_hook*/, current_stream/*run stream*/, std::nullopt/*out: inplace tensor*/);
     }
 
     void _combine_op_b(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
         if (hook_cs[index].has_value()) hook_cs[index].value()();
+        DEBUG_VAR("[ _combine_op_b ] ", index, ": ", combine_x[index].sizes(), " ");
     }
 
     void _moe_sync(std::shared_ptr<FUSEConfig>& fuse_config) {
