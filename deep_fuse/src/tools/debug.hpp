@@ -16,24 +16,47 @@ class FUSEException: public std::exception {
         const char *what() const noexcept override { return message.c_str(); }
 };
 
+// DEBUG code
 #define ENABLE_DEBUG_OUTPUT
-
 #ifdef ENABLE_DEBUG_OUTPUT
 #define DEBUG_CODE(cmd) \
     do { \
-        std::cout << "Debug Info: [" << __FILE__ << ":" << __LINE__ << "] Executing: " \
-                  << #cmd << std::endl; \
+        std::ostringstream oss; \
+        oss << "[Rank: " << std::getenv("RANK") << " ]" << "Debug Info: [" << __FILE__ << ":" << __LINE__ << "] Executing: " \
+            << #cmd << std::endl; \
+        std::cout << oss.str() << std::endl; \
         cmd; \
     } while (0)
 #else
 #define DEBUG_CODE(cmd) do {} while (0)
 #endif
 
+// DEBUG variables
+#define DEBUG_VAR(...) \
+    do { \
+        std::ostringstream oss; \
+        oss << "[Rank: " << std::getenv("RANK") << " ]: "; \
+        log_impl(oss, __VA_ARGS__); \
+        std::cout << oss.str() << std::endl; \
+    } while (0)
+
+template<typename T>
+void log_impl(std::ostringstream& oss, const T& value) {
+    oss << value;
+}
+
+template<typename T, typename... Args>
+void log_impl(std::ostringstream& oss, const T& value, const Args&... args) {
+    oss << value;
+    log_impl(oss, args...);
+}
+
+// DEBUG file
 #ifndef DEBUG_FILE
 #define DEBUG_FILE() \
-do { \
-    printf("Test Passed: %s:%d. \n", __FILE__, __LINE__); \
-} while (0)
+    do { \
+        printf("[Rank: %s] Test Passed: %s:%d. \n", std::getenv("RANK"), __FILE__, __LINE__); \
+    } while (0)
 #endif
 
 #ifndef FUSE_HOST_ASSERT
