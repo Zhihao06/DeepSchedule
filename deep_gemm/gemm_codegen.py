@@ -125,7 +125,7 @@ def generate_kernel_template(num_tokens_l: List, hidden_l: List, intermediate_l:
             f.write(text)
 
     code_gemm_gen_hpp += code_gemm_end
-    with open("../fuse_kernel/src/gemm_gen.hpp", "w") as f:
+    with open("../deep_fuse/src/gemm_gen.hpp", "w") as f:
         f.write(code_gemm_gen_hpp)
 
 def test_best_configs():
