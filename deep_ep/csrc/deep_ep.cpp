@@ -1071,7 +1071,7 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
     }
 
     // Set Concurrent Grid Sync Counter
-    cudaMemsetAsync(grid_sync_counter, 0, sizeof(int), comm_stream);
+    cudaMemsetAsync(grid_sync_counter, 0, sizeof(int), launch_stream);
 
     // Kernel launch
     auto next_clean_meta = next_buffer.clean_meta();
@@ -1163,7 +1163,7 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
     }
 
     // Set Concurrent Grid Sync Counter
-    cudaMemsetAsync(grid_sync_counter, 0, sizeof(int), comm_stream);
+    cudaMemsetAsync(grid_sync_counter, 0, sizeof(int), launch_stream);
 
     // Kernel launch
     auto next_clean_meta = next_buffer.clean_meta();

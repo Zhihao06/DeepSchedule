@@ -110,7 +110,7 @@ private:
 
     void _moe_sync(std::shared_ptr<FUSEConfig>& fuse_config) {
         c10::cuda::CUDAStream current_stream = at::cuda::getCurrentCUDAStream();
-        global_pg->barrier()->wait();
+        // global_pg->barrier()->wait();
 
         // Dispatch 0 issue
         _dispatch_op_a(current_stream, fuse_config, 0);
@@ -137,7 +137,7 @@ private:
 
     void _moe_sched(std::shared_ptr<FUSEConfig>& fuse_config) {
         c10::cuda::CUDAStream current_stream = at::cuda::getCurrentCUDAStream();
-        global_pg->barrier()->wait();
+        // global_pg->barrier()->wait();
         stream_wait(compute_stream, current_stream);
         stream_wait(comm_stream, current_stream);
 
@@ -167,7 +167,8 @@ private:
         }
         _combine_op_b(comm_stream, fuse_config, num_splits-1);
 
-        cudaDeviceSynchronize();
+        stream_wait(current_stream, comm_stream);
+        stream_wait(current_stream, compute_stream);
     }
 
 protected:
@@ -188,6 +189,7 @@ public:
 
     std::vector<std::shared_ptr<Buffer>> buffers;
     c10::cuda::CUDAStream comm_stream, compute_stream;
+    torch::Tensor final_output;
 
     MultiTokenMoE(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, 
         uint64_t num_topk, uint64_t world_size, c10::intrusive_ptr<ProcessGroupNCCL>& global_pg, bool enable_random = true, uint64_t num_splits = 2): 
@@ -246,6 +248,7 @@ public:
                 std::tie(out[i], o_vec[i], o_scales[i], o_scales_strided[i], silu_out[i], out_2[i]) = initialize_empty_intermediate(this->num_split_tokens[i], num_topk, num_groups, num_experts, m_max, hidden_size, khidden);
             }
         }
+        final_output = torch::empty({num_tokens, hidden_size}, dtype(torch::kBFloat16).device(torch::kCUDA));
     }
 
     void load_weights(const torch::Tensor& w13_weight_data, const torch::Tensor& w13_weight_scale, const torch::Tensor& w2_weight_data, const torch::Tensor& w2_weight_scale) {
@@ -258,19 +261,15 @@ public:
         hidden_states = custom_split(hidden_states_in, this->num_split_tokens, 0);
         topk_ids = custom_split(topk_ids_in, this->num_split_tokens, 0);
         topk_weights = custom_split(topk_weights_in, this->num_split_tokens, 0);
+        combine_x = custom_split(final_output, this->num_split_tokens, 0);
     }
 
     torch::Tensor get_merged_output() {
-        cudaDeviceSynchronize();
-        torch::Tensor final_output = torch::cat(combine_x, 0);
-        assert(final_output.size(0) == num_tokens);
-        assert(final_output.size(1) == hidden_size);
-        return final_output;
+        return this->final_output;
     }
 
     void launch(LaunchMode launch_mode, std::shared_ptr<FUSEConfig>& fuse_config) {
         assert(this->num_split_tokens.size() > 0);
-        cudaDeviceSynchronize();
         if (launch_mode == LaunchMode::SYNC_LAUNCH) _moe_sync(fuse_config);
         else if (launch_mode == LaunchMode::SCHED_LAUNCH) _moe_sched(fuse_config);
         else throw std::runtime_error("Invalid launch mode");

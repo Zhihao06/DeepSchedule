@@ -33,8 +33,10 @@ void get_deepep_low_latency_buffer(uint64_t num_max_dispatch_tokens_per_rank, ui
     setenv("NVSHMEM_IB_ENABLE_IBGDA", "1", 1);
     setenv("NVSHMEM_IBGDA_NIC_HANDLER", "gpu", 1);
     setenv(("NVSHMEM_IBGDA_NUM_RC_PER_PE"), std::to_string(num_qps_per_rank).c_str(), 1);
-    setenv("NVSHMEM_QP_DEPTH", "1024", 1);
+    setenv("NVSHMEM_QP_DEPTH", "4096", 1); // TODO: Tuning for performance
     setenv("NVSHMEM_CUMEM_GRANULARITY", "536870912", 1);  // 2^29 = 536,870,912
+    setenv("RANK", std::to_string(rank).c_str(), 1);
+    setenv("GROUP_SIZE", std::to_string(group_size).c_str(), 1);
 
     std::vector<std::vector<uint8_t>> nvshmem_unique_ids(group_size);
 
