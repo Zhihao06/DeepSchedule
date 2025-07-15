@@ -69,13 +69,16 @@ void Tool::load_inputs(const std::string& mode, const torch::Tensor& hidden_stat
 }
 
 void Tool::launch(const std::string& mode, const std::string& launch_mode, int deepep_sms) {
-    std::shared_ptr<FUSEConfig> fuse_config = std::make_shared<FUSEConfig>(getSmCount() - deepep_sms, deepep_sms);
+    std::shared_ptr<FUSEConfig> fuse_config;
     if (mode == "sequence") {
+        fuse_config = std::make_shared<FUSEConfig>(getSmCount() - deepep_sms, deepep_sms);
         this->sequence_moe->launch(fuse_config);
     } else if (mode == "multi_token") {
         if (launch_mode == "sched") {
+            fuse_config = std::make_shared<FUSEConfig>(getSmCount() - deepep_sms, deepep_sms);
             this->multi_token_moe->launch(LaunchMode::SCHED_LAUNCH, fuse_config);
         } else if (launch_mode == "sync") {
+            fuse_config = std::make_shared<FUSEConfig>(getSmCount(), deepep_sms);
             this->multi_token_moe->launch(LaunchMode::SYNC_LAUNCH, fuse_config);
         } else {
             throw std::runtime_error("Invalid launch mode");
