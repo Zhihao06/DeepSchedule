@@ -67,7 +67,6 @@ protected:
 
     void _moe_core(std::shared_ptr<FUSEConfig>& fuse_config, LaunchMode launch_mode, bool enable_profile) {
         c10::cuda::CUDAStream current_stream = at::cuda::getCurrentCUDAStream();
-        global_pg->barrier()->wait();
         _dispatch_op_a(current_stream, fuse_config);
         _dispatch_op_b(current_stream, fuse_config);
         _compute_op(current_stream, fuse_config);
@@ -104,7 +103,6 @@ public:
     }
 
     torch::Tensor get_merged_output() {
-        cudaDeviceSynchronize();
         torch::Tensor final_output = combine_x;
         assert(final_output.size(0) == num_tokens);
         assert(final_output.size(1) == hidden_size);
@@ -112,7 +110,6 @@ public:
     }
 
     void launch(std::shared_ptr<FUSEConfig>& fuse_config) {
-        cudaDeviceSynchronize();
         _moe_core(fuse_config, LaunchMode::DEFAULT_LAUNCH, false);
     }
 
