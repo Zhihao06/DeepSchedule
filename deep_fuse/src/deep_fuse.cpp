@@ -71,7 +71,7 @@ void Tool::load_inputs(const std::string& mode, const torch::Tensor& hidden_stat
 void Tool::launch(const std::string& mode, const std::string& launch_mode, int deepep_sms) {
     std::shared_ptr<FUSEConfig> fuse_config;
     if (mode == "sequence") {
-        fuse_config = std::make_shared<FUSEConfig>(getSmCount() - deepep_sms, deepep_sms);
+        fuse_config = std::make_shared<FUSEConfig>(getSmCount(), deepep_sms);
         this->sequence_moe->launch(fuse_config);
     } else if (mode == "multi_token") {
         if (launch_mode == "sched") {
