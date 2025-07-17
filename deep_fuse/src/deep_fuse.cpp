@@ -38,6 +38,7 @@ Tool::Tool(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint
     uint64_t num_topk, uint64_t world_size, const pybind11::object& global_pg_nccl):
     num_experts(num_experts), num_max_dispatch_tokens_per_rank(num_max_dispatch_tokens_per_rank), khidden(khidden), hidden_size(hidden_size), num_tokens(num_tokens), 
     num_topk(num_topk), world_size(world_size) {
+        this->num_sms = getSmCount();
         this->global_pg = global_pg_nccl.cast<c10::intrusive_ptr<::c10d::ProcessGroupNCCL>>();
 }
 
@@ -71,14 +72,14 @@ void Tool::load_inputs(const std::string& mode, const torch::Tensor& hidden_stat
 void Tool::launch(const std::string& mode, const std::string& launch_mode, int deepep_sms) {
     std::shared_ptr<FUSEConfig> fuse_config;
     if (mode == "sequence") {
-        fuse_config = std::make_shared<FUSEConfig>(getSmCount(), deepep_sms);
+        fuse_config = std::make_shared<FUSEConfig>(this->num_sms, deepep_sms);
         this->sequence_moe->launch(fuse_config);
     } else if (mode == "multi_token") {
         if (launch_mode == "sched") {
-            fuse_config = std::make_shared<FUSEConfig>(getSmCount() - deepep_sms, deepep_sms);
+            fuse_config = std::make_shared<FUSEConfig>(this->num_sms - deepep_sms, deepep_sms);
             this->multi_token_moe->launch(LaunchMode::SCHED_LAUNCH, fuse_config);
         } else if (launch_mode == "sync") {
-            fuse_config = std::make_shared<FUSEConfig>(getSmCount(), deepep_sms);
+            fuse_config = std::make_shared<FUSEConfig>(this->num_sms, deepep_sms);
             this->multi_token_moe->launch(LaunchMode::SYNC_LAUNCH, fuse_config);
         } else {
             throw std::runtime_error("Invalid launch mode");

@@ -1055,13 +1055,14 @@ Buffer::low_latency_dispatch(const torch::Tensor& x, const torch::Tensor& topk_i
         stream_wait(launch_stream, compute_stream);
 
     // Allocate packed tensors
-    packed_recv_x = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank, hidden},
-        x.options().dtype(use_fp8 ? torch::kFloat8_e4m3fn: torch::kBFloat16));
-    packed_recv_src_info = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank}, torch::dtype(torch::kInt32).device(torch::kCUDA));
-    packed_recv_layout_range = torch::empty({num_local_experts, num_ranks}, torch::dtype(torch::kInt64).device(torch::kCUDA));
-    packed_recv_count = torch::empty({num_local_experts}, torch::dtype(torch::kInt32).device(torch::kCUDA));
+    auto packed_recv_x = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank, hidden},
+                                      x.options().dtype(use_fp8 ? torch::kFloat8_e4m3fn: torch::kBFloat16));
+    auto packed_recv_src_info = torch::empty({num_local_experts, num_ranks * num_max_dispatch_tokens_per_rank}, torch::dtype(torch::kInt32).device(torch::kCUDA));
+    auto packed_recv_layout_range = torch::empty({num_local_experts, num_ranks}, torch::dtype(torch::kInt64).device(torch::kCUDA));
+    auto packed_recv_count = torch::empty({num_local_experts}, torch::dtype(torch::kInt32).device(torch::kCUDA));
 
     // Allocate column-majored scales
+    auto packed_recv_x_scales = std::optional<torch::Tensor>();
     float* packed_recv_x_scales_ptr = nullptr;
     if (use_fp8) {
         EP_HOST_ASSERT((num_ranks * num_max_dispatch_tokens_per_rank) % 4 == 0 and "TMA requires the number of tokens to be multiple of 4");
@@ -1152,7 +1153,7 @@ Buffer::low_latency_combine(const torch::Tensor& x, const torch::Tensor& topk_id
         stream_wait(launch_stream, compute_stream);
 
     // Allocate output tensor
-    // torch::Tensor combined_x;
+    torch::Tensor combined_x;
     if (out.has_value()) {
         EP_HOST_ASSERT(out->dim() == 2 and out->is_contiguous());
         EP_HOST_ASSERT(out->size(0) == num_combined_tokens and out->size(1) == hidden);
