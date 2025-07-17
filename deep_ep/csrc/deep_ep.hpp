@@ -71,10 +71,6 @@ private:
     volatile int* moe_recv_rdma_counter = nullptr;
     int* moe_recv_rdma_counter_mapped = nullptr;
 
-    // Use Cuda Graph
-    torch::Tensor packed_recv_x, packed_recv_src_info, packed_recv_layout_range, packed_recv_count, combined_x;
-    std::optional<torch::Tensor> packed_recv_x_scales;
-
     // For Grid-level Sync
     int* grid_sync_counter = nullptr;
 

@@ -18,6 +18,7 @@ private:
     std::shared_ptr<OverlapMoE> overlap_moe;
     std::shared_ptr<TBOMoE> tbo_moe;
     std::shared_ptr<MultiTokenMoE> multi_token_moe;
+    uint64_t num_sms;
 
 public:
     Tool(uint64_t num_experts, uint64_t num_max_dispatch_tokens_per_rank, uint64_t khidden, uint64_t hidden_size, uint64_t num_tokens, uint64_t num_topk, uint64_t world_size, const pybind11::object& global_pg_nccl);
