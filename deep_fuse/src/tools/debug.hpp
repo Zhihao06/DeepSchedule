@@ -40,6 +40,24 @@ class FUSEException: public std::exception {
         std::cout << oss.str() << std::endl; \
     } while (0)
 
+// DEBUG timer
+#ifndef DEBUG_TIMER
+#define DEBUG_TIMER() \
+    do { \
+        auto now = std::chrono::system_clock::now(); \
+        auto now_time_t = std::chrono::system_clock::to_time_t(now); \
+        auto us = std::chrono::duration_cast<std::chrono::microseconds>( \
+                    now.time_since_epoch()).count() % 1000000; \
+        std::tm tm; \
+        ::gmtime_r(&now_time_t, &tm); \
+        std::ostringstream oss; \
+        oss << "[Rank: " << std::getenv("RANK") << " ]: " << "Timer: [" << __FILE__ << ":" << __LINE__ << "] " \
+            << "Now: " << std::put_time(&tm, "%Y-%m-%d %H:%M:%S"); \
+        oss << "." << std::setw(6) << std::setfill('0') << us; \
+        std::cout << oss.str() << std::endl; \
+    } while (0)
+#endif
+
 template<typename T>
 void log_impl(std::ostringstream& oss, const T& value) {
     oss << value;

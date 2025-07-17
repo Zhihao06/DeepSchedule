@@ -23,11 +23,17 @@ else()
 endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -fPIC -fvisibility=default")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -fvisibility=default")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -fvisibility=default -DDISABLE_AGGRESSIVE_PTX_INSTRS")
 set(CUDA_SEPARABLE_COMPILATION ON)
 set(NVSHMEM_ROOT_DIR "/home/dpsk_a2a/deepep-nvshmem/install")
 list(APPEND CUDA_NVCC_FLAGS "-O3")
-list(APPEND CUDA_NVCC_FLAGS "--ptxas-options=--verbose,--register-usage-level=10,--warn-on-local-memory-usage")
+list(APPEND CUDA_NVCC_FLAGS
+    -Xcompiler
+    -O3
+    -rdc=true
+    --ptxas-options=--register-usage-level=10
+    -DDISABLE_AGGRESSIVE_PTX_INSTRS
+)
 
 set(TORCH_CUDA_ARCH_LIST "9.0")
 find_package(CUDAToolkit REQUIRED)
