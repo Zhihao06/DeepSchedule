@@ -9,6 +9,7 @@ export NUM_SPLITS="" # split with ",", like "256,256"
 export NSYS_FILE="deepfuse_seq_sm_mode${MODE}_launch${LAUNCH_TYPE}_splits${NUM_SPLITS}"
 export NCU_FILE="deepfuse_seq_sm_mode${MODE}_ncu"
 export PROC=8
+export LD_LIBRARY_PATH=/mnt/data/nas/zhihao/zhl-sglang/lib/python3.10/site-packages/torch/lib:$LD_LIBRARY_PATH # your torch lib path
 
 NSYS="
     nsys profile -o $NSYS_FILE --force-overwrite=true
