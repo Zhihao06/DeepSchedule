@@ -181,8 +181,9 @@ initialize_random_inputs(int64_t num_tokens, int64_t num_topk, int64_t num_group
     torch::Tensor hidden_states = torch::randn({num_tokens, hidden_size}, dtype(torch::kBFloat16).device(torch::kCUDA));
 
     // 2. topk_ids: [num_tokens, num_topk]
-    torch::Tensor topk_ids = torch::arange(num_tokens * num_topk, dtype(torch::kInt64).device(torch::kCUDA));
-    topk_ids = (topk_ids % num_experts).view({num_tokens, num_topk});
+    torch::Tensor topk_ids = torch::randint(0, num_experts, {num_tokens, num_topk}, dtype(torch::kInt64).device(torch::kCUDA));
+    // torch::Tensor topk_ids = torch::arange(num_tokens * num_topk, dtype(torch::kInt64).device(torch::kCUDA));
+    // topk_ids = (topk_ids % num_experts).view({num_tokens, num_topk});
 
     // 3. topk_weights: [num_tokens, num_topk]
     torch::Tensor topk_weights = torch::randn({num_tokens, num_topk}, dtype(torch::kFloat32).device(torch::kCUDA)).abs();
