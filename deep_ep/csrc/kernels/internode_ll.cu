@@ -266,6 +266,8 @@ dispatch(void* packed_recv_x, float* packed_recv_x_scales,
             while((arrived_sms = ld_acquire_global(grid_sync_counter)) != num_sms);
         }
         __syncthreads();
+        if (warp_id == (num_warps - 1) and lane_id == 0 and sm_id == (num_sms - 1))
+            st_na_release(grid_sync_counter, 0);
 
     // Receiving and packing
     if (responsible_expert_idx < num_experts) {
@@ -545,6 +547,8 @@ combine(void* combined_x,
         while((arrived_sms = ld_acquire_global(grid_sync_counter)) != num_sms);
     }
     __syncthreads();
+    if (thread_id == (num_threads - 1) and sm_id == (num_sms - 1))
+        st_na_release(grid_sync_counter, 0);
 
     // Reduce tokens with FP8 cast
     EP_DEVICE_ASSERT(num_topk <= 32 and hidden_bf16_int4 <= num_threads);
