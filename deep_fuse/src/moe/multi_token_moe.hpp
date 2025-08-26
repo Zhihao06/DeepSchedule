@@ -81,7 +81,7 @@ private:
             compute_stream,
             fuse_config->gemm_sms
         );
-        // _combine_op_b(comm_stream, fuse_config, index-1);
+        _combine_op_b(comm_stream, fuse_config, index-1);
     }
 
     void _dispatch_op(c10::cuda::CUDAStream current_stream, std::shared_ptr<FUSEConfig>& fuse_config, int index) {
@@ -158,13 +158,13 @@ private:
 
         stream_wait(compute_stream, comm_stream);
         stream_wait(comm_stream, compute_stream);
-        _combine_op_a(comm_stream, fuse_config, num_splits-2);
+        // _combine_op_a(comm_stream, fuse_config, num_splits-2);
         _compute_op(compute_stream, fuse_config, num_splits-1);
         stream_wait(comm_stream, compute_stream);
         _combine_op_a(comm_stream, fuse_config, num_splits-1);
-        for (int i = 0; i < num_splits - 1; i++) {
-            _combine_op_b(comm_stream, fuse_config, i);
-        }
+        // for (int i = 0; i < num_splits - 1; i++) {
+        //     _combine_op_b(comm_stream, fuse_config, i);
+        // }
         _combine_op_b(comm_stream, fuse_config, num_splits-1);
 
         stream_wait(current_stream, comm_stream);
