@@ -24,7 +24,7 @@ def get_expert_weights():
     )
     return w13_weight_fp8, w2_weight_fp8
 
-def test_deepfuse(rank, world_size, args):
+def test_deepschedule(rank, world_size, args):
     local_rank = rank
     rank = world_size * args.node_rank + rank
     world_size = world_size * args.nnodes
@@ -159,4 +159,4 @@ if __name__ == "__main__":
     
     world_size = int(args.world_size / args.nnodes)
     
-    mp.spawn(test_deepfuse, args=(world_size, args,), nprocs=world_size, join=True)
+    mp.spawn(test_deepschedule, args=(world_size, args,), nprocs=world_size, join=True)

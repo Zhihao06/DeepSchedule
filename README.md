@@ -1,7 +1,7 @@
-# DeepFUSE
+# DeepSchedule
 
 ## 说明
-DeepFUSE 是一个基于DeepEP和DeepGEMM的计算通信overlap工具，用于加速分布式推理。
+DeepSchedule 是一个基于DeepEP和DeepGEMM的计算通信overlap工具，用于加速分布式推理。
 
 ## 使用方式
 
@@ -44,7 +44,7 @@ cmake ..
 make
 ```
 
-### 3. 编译DeepFUSE
+### 3. 编译DeepSchedule
 ```shell
 mkdir -p deep_fuse/build
 cd deep_fuse/build
@@ -76,7 +76,7 @@ import deep_fuse
 ```
 
 ### 4. 框架使用用例
-见[测试文件](deep_fuse/python/test_deepfuse.py)
+见[测试文件](deep_fuse/python/test_deepschedule.py)
 
 ```python
 runtime = deep_fuse.Tool(...) # 创建运行工具抽象类
