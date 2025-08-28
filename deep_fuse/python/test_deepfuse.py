@@ -8,8 +8,8 @@ import numpy as np
 
 NUM_EXPERTS, NUM_MAX_DISPATCH_TOKENS_PER_RANK, KHIDDEN, HIDDEN_SIZE, NUM_TOKENS, NUM_TOPK = 128, 1024, 3072, 4096, 512, 8
 
-MODE = "sequence"
-LAUNCH_MODE = "sched"
+MODE = "sequence" # "sequence" or "multi_token"
+LAUNCH_MODE = "sched" # "sched" or "sync"
 SMS = 20
 
 def get_expert_weights():
