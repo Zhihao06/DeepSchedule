@@ -86,5 +86,5 @@ runtime.load_weights(...) # 加载权重
 runtime.get_metadata(...) # 获取元数据, 包括切分方式和模式
 runtime.load_inputs(...) # 加载输入数据
 runtime.launch(...) # 运行launch MoE kernel
-untime.get_merged_output(...) # 获取合并后的输出x
+runtime.get_merged_output(...) # 获取合并后的输出
 ```
