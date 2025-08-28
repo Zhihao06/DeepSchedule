@@ -74,3 +74,17 @@ pip install dist/*.whl
 ```python
 import deep_fuse
 ```
+
+### 4. 框架使用用例
+见[测试文件](deep_fuse/python/test_deepfuse.py)
+
+```python
+runtime = deep_fuse.Tool(...) # 创建运行工具抽象类
+runtime.create_mode(...) # 创建运行模式和最大切片数量
+runtime.load_weights(...) # 加载权重
+
+runtime.get_metadata(...) # 获取元数据, 包括切分方式和模式
+runtime.load_inputs(...) # 加载输入数据
+runtime.launch(...) # 运行launch MoE kernel
+untime.get_merged_output(...) # 获取合并后的输出x
+```
